@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <linearGradient id="front" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#383D40"/><stop offset="0.42" stop-color="#24292C"/>
+    <stop offset="1" stop-color="#171A1D"/>
+  </linearGradient>
+  <linearGradient id="top" x1="0" y1="0" x2="0.9" y2="1">
+    <stop stop-color="#464B4D"/><stop offset="1" stop-color="#292D30"/>
+  </linearGradient>
+  <linearGradient id="side" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#202427"/><stop offset="1" stop-color="#0D0F11"/>
+  </linearGradient>
+  <linearGradient id="progress" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#FFB469"/><stop offset="0.58" stop-color="#F2944B"/>
+    <stop offset="1" stop-color="#E77739"/>
+  </linearGradient>
+  <radialGradient id="faceWarmth">
+    <stop stop-color="#E98345" stop-opacity="0.13"/>
+    <stop offset="1" stop-color="#E98345" stop-opacity="0"/>
+  </radialGradient>
+</defs><ellipse cx="514" cy="835" rx="272" ry="31" fill="#000" opacity="0.15"/>
+<circle cx="512" cy="493" r="347" fill="none" stroke="#27292A" stroke-width="49"/>
+<circle cx="512" cy="493" r="347" fill="none" stroke="url(#progress)" stroke-width="47"
+  stroke-linecap="round" stroke-dasharray="1580 600" transform="rotate(-92 512 493)"/>
+<path d="M280 320 392 215H705Q721 215 735 229L630 333Z" fill="url(#top)"/>
+<path d="M630 333 735 229V640Q735 656 723 669L630 762Z" fill="url(#side)"/>
+<path d="M280 320H630V739Q630 762 607 762H303Q280 762 280 739Z" fill="url(#front)"/>
+<path d="M280 320H630L735 229M630 320V739" fill="none" stroke="#636A6C" stroke-opacity="0.44" stroke-width="3"/>
+</svg>

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <linearGradient id="front" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#383D40"/><stop offset="0.42" stop-color="#24292C"/>
+    <stop offset="1" stop-color="#171A1D"/>
+  </linearGradient>
+  <linearGradient id="top" x1="0" y1="0" x2="0.9" y2="1">
+    <stop stop-color="#464B4D"/><stop offset="1" stop-color="#292D30"/>
+  </linearGradient>
+  <linearGradient id="side" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#202427"/><stop offset="1" stop-color="#0D0F11"/>
+  </linearGradient>
+  <linearGradient id="progress" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#FFB469"/><stop offset="0.58" stop-color="#F2944B"/>
+    <stop offset="1" stop-color="#E77739"/>
+  </linearGradient>
+  <radialGradient id="faceWarmth">
+    <stop stop-color="#E98345" stop-opacity="0.13"/>
+    <stop offset="1" stop-color="#E98345" stop-opacity="0"/>
+  </radialGradient>
+</defs><ellipse cx="510" cy="857" rx="315" ry="34" fill="#000" opacity="0.15"/>
+<path d="M512 145 858 316 512 488 166 316Z" fill="url(#top)" stroke="#606669" stroke-opacity="0.44" stroke-width="3"/>
+<path d="M166 316 512 488V856L185 690Q166 679 166 653Z" fill="url(#front)"/>
+<path d="M858 316 512 488V856L839 690Q858 679 858 653Z" fill="url(#side)"/>
+<path d="M166 316 512 488 858 316M512 488V856" fill="none" stroke="#697073" stroke-opacity="0.35" stroke-width="3"/>
+<ellipse cx="512" cy="316" rx="183" ry="91" fill="none" stroke="#17191B" stroke-width="47"/>
+<ellipse cx="512" cy="316" rx="183" ry="91" fill="none" stroke="url(#progress)"
+  stroke-width="42" stroke-linecap="round" stroke-dasharray="669 210" transform="rotate(-25 512 316)"/>
+</svg>

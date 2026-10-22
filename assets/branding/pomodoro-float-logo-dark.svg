@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="250" viewBox="0 0 1200 250">
+<defs>
+  <linearGradient id="front" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#383D40"/><stop offset="0.42" stop-color="#24292C"/>
+    <stop offset="1" stop-color="#171A1D"/>
+  </linearGradient>
+  <linearGradient id="top" x1="0" y1="0" x2="0.9" y2="1">
+    <stop stop-color="#464B4D"/><stop offset="1" stop-color="#292D30"/>
+  </linearGradient>
+  <linearGradient id="side" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#202427"/><stop offset="1" stop-color="#0D0F11"/>
+  </linearGradient>
+  <linearGradient id="progress" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#FFB469"/><stop offset="0.58" stop-color="#F2944B"/>
+    <stop offset="1" stop-color="#E77739"/>
+  </linearGradient>
+  <radialGradient id="faceWarmth">
+    <stop stop-color="#E98345" stop-opacity="0.13"/>
+    <stop offset="1" stop-color="#E98345" stop-opacity="0"/>
+  </radialGradient>
+</defs><rect x="2" y="15" width="193" height="193" rx="38" fill="#303639"/>
+<g transform="translate(-20 -2) scale(0.235)"><ellipse cx="517" cy="872" rx="326" ry="35" fill="#000" opacity="0.16"/>
+<path d="M150 275 285 149Q301 132 325 132H836Q854 132 869 150L725 275Z" fill="url(#top)"/>
+<path d="M725 275 869 150V676Q869 699 851 716L725 852Z" fill="url(#side)"/>
+<path d="M150 275H725V817Q725 852 690 852H185Q150 852 150 817Z" fill="url(#front)"/>
+<path d="M150 275H725M725 275 869 150M725 275V817Q725 852 690 852" fill="none" stroke="#62696B" stroke-opacity="0.38" stroke-width="3"/>
+<path d="M151 283V813Q151 851 188 851" fill="none" stroke="#677073" stroke-opacity="0.36" stroke-width="3"/>
+<circle cx="438" cy="562" r="236" fill="url(#faceWarmth)"/>
+<circle cx="438" cy="562" r="180" fill="none" stroke="#0C0F11" stroke-opacity="0.83" stroke-width="52"/>
+<circle cx="438" cy="562" r="180" fill="none" stroke="url(#progress)" stroke-width="48"
+  stroke-linecap="round" stroke-dasharray="822 309" transform="rotate(-90 438 562)"/></g>
+<text x="233" y="175" fill="#F4F1EB" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif"
+  font-size="91" font-weight="600" letter-spacing="-2.7">Pomodoro</text>
+<text x="727" y="175" fill="#F3A05D" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif"
+  font-size="91" font-weight="600" letter-spacing="-2.7">Float</text>
+</svg>
