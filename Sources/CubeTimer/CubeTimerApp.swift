@@ -982,7 +982,7 @@ private struct TimerView: View {
                 Image(systemName: "slider.horizontal.3")
                     .frame(width: 31, height: 30)
             }
-            .help("Timer and Appearance settings")
+            .help("Timer, appearance, window, and sound settings")
             .accessibilityLabel("Settings")
         }
         .buttonStyle(IconButtonStyle(colors: colors, accent: accent))
@@ -1238,7 +1238,9 @@ private struct SecondaryButtonStyle: ButtonStyle {
 }
 
 private struct SettingsView: View {
-    private enum Tab: String, CaseIterable { case timer = "Timer", appearance = "Appearance" }
+    private enum Tab: String, CaseIterable {
+        case timer = "Timer", appearance = "Appearance", window = "Window", sound = "Sound"
+    }
     @EnvironmentObject private var timer: TimerModel
     @EnvironmentObject private var appearance: AppearanceModel
     @Environment(\.dismiss) private var dismiss
@@ -1267,7 +1269,7 @@ private struct SettingsView: View {
                 Button("Done") { savePresets(); dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
-            Picker("Panel", selection: $tab) {
+            Picker("Settings section", selection: $tab) {
                 ForEach(Tab.allCases, id: \.self) { tab in
                     Text(tab.rawValue).tag(tab)
                 }
@@ -1276,13 +1278,18 @@ private struct SettingsView: View {
             .labelsHidden()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 17) {
-                    if tab == .timer { timerSettings }
-                    else { appearanceSettings }
+                VStack(alignment: .leading, spacing: 12) {
+                    switch tab {
+                    case .timer: timerSettings
+                    case .appearance: appearanceSettings
+                    case .window: windowSettings
+                    case .sound: soundSettings
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 3)
             }
+            .id(tab)
         }
         .padding(23)
         .frame(width: 440, height: 640)
@@ -1299,86 +1306,105 @@ private struct SettingsView: View {
     }
 
     private var timerSettings: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            sectionTitle("PRESET DURATIONS")
-            ForEach(TimerModel.defaultDurations.indices, id: \.self) { index in
-                HStack {
-                    Text(TimerModel.presetNames[index])
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .frame(width: 65, alignment: .leading)
-                    Spacer()
-                    TextField("min", value: $minutes[index], format: .number)
-                        .frame(width: 43).multilineTextAlignment(.trailing)
-                    Text("m")
-                    TextField("sec", value: $seconds[index], format: .number)
-                        .frame(width: 43).multilineTextAlignment(.trailing)
-                    Text("s")
-                }
-                .font(.system(size: 12, design: .monospaced))
-                .padding(10)
-                .background(colors.panel, in: RoundedRectangle(cornerRadius: 9))
-            }
-            helper("Each face accepts 00:01 through 99:59. Press Done to save preset edits.")
-            Divider().padding(.vertical, 5)
-            sectionTitle("POMODORO")
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("TIMER & POMODORO")
             Toggle("Auto-cycle focus and break", isOn: Binding(
                 get: { timer.requestedFlowEnabled }, set: { timer.setFlowEnabled($0) }
             ))
             .toggleStyle(.switch)
             helper(timer.pendingModeDescription ??
-                   "Uses the 25-minute focus and 5-minute break faces. Mode changes wait for the current timer to finish.")
+                   "Uses the focus and short-break presets. Mode changes wait for the current timer to finish.")
             Toggle("Automatically start next phase", isOn: $timer.autoStartNextPhase)
                 .toggleStyle(.switch)
-            helper("On-time completions start the next phase when enabled. A missed boundary waits for Start Short Break, Start Long Break, or Start Focus. Skipping a break prepares Focus.")
+            helper("Starts the next phase on time; after a missed boundary, press Start. Skipping a break prepares Focus.")
             Stepper(value: $cycleTargetSelection, in: 2...8) {
                 Text("Focuses before long break: \(cycleTargetSelection)")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
             }
-            helper(timer.cycleTargetChangePending
-                   ? "Current cycle: \(timer.cycleTarget) focuses. Next cycle: \(timer.requestedCycleTarget) focuses."
-                   : "Current cycle: \(timer.cycleTarget) focuses. Changes during a cycle apply after its long break ends or is skipped. Press Done to save.")
-            HStack {
-                Text("Long break")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                Spacer()
-                TextField("min", value: $longBreakMinutes, format: .number)
-                    .frame(width: 43).multilineTextAlignment(.trailing)
-                Text("m")
-                TextField("sec", value: $longBreakSeconds, format: .number)
-                    .frame(width: 43).multilineTextAlignment(.trailing)
-                Text("s")
-            }
-            .font(.system(size: 12, design: .monospaced))
-            .padding(10)
-            .background(colors.panel, in: RoundedRectangle(cornerRadius: 9))
-            helper("Duration: 00:01–99:59. Press Done to save.")
+            helper(cycleTargetDescription)
             Text("\(timer.completedFocusTotal) completed focuses · \(timer.focusProgressLabel) toward long break")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(colors.secondary)
             if timer.hasSuspendedPomodoro {
                 helper("Pomodoro is paused behind a one-off timer. Resume it from the window or Command-Shift-P. Turning Pomodoro off after this timer ends will discard the paused phase; Undo is available for six seconds.")
             }
-            Divider().padding(.vertical, 5)
-            sectionTitle("ALERTS")
+            Divider().padding(.vertical, 3)
+            sectionTitle("PRESETS & LONG BREAK")
+            ForEach(TimerModel.defaultDurations.indices, id: \.self) { index in
+                durationRow(TimerModel.presetNames[index] + " preset",
+                            minutes: $minutes[index], seconds: $seconds[index])
+            }
+            durationRow("Long break", minutes: $longBreakMinutes,
+                        seconds: $longBreakSeconds)
+            helper("Durations: 00:01–99:59. Press Done to save these edits and the cycle target.")
+        }
+    }
+
+    private var soundSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("SOUND & ALERTS")
             Toggle("Mute sound", isOn: $timer.muted).toggleStyle(.switch)
             HStack {
-                Image(systemName: "speaker.fill")
-                Slider(value: $timer.volume, in: 0...1).disabled(timer.muted)
-                Image(systemName: "speaker.wave.3.fill")
+                Text("In-app volume")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                Slider(value: $timer.volume, in: 0...1)
+                    .disabled(timer.muted)
+                    .accessibilityLabel("In-app sound volume")
+                    .accessibilityValue("\(Int(timer.volume * 100)) percent")
                 Text("\(Int(timer.volume * 100))%")
                     .frame(width: 40, alignment: .trailing)
+                    .accessibilityHidden(true)
             }
             .foregroundStyle(colors.secondary)
-            helper("Mute silences the alarm and cube face thud. This volume adjusts in-app sounds; macOS controls notification sound when Pomodoro Float is hidden or closed. A visual alert always appears.")
-            Divider().padding(.vertical, 5)
+            helper("Mute silences the alarm and cube face thud. This slider adjusts sounds played by the app. macOS controls notification sound when the app is hidden or closed. A visual alert always appears.")
+        }
+    }
+
+    private var windowSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
             sectionTitle("WINDOW")
             Toggle("Borderless Window", isOn: Binding(
                 get: { timer.borderlessWindow },
                 set: { timer.setBorderlessWindow($0) }
             ))
                 .toggleStyle(.switch)
-            helper("In the standard window, drag an edge or corner to resize. In borderless mode, the time stays visible when the display turns away. Hold Control to reveal the lower-right resize grip. Control-drag the cube to move the window or the grip to resize it. Control-click or right-click the cube for Settings and window controls.")
+            Toggle("Always on Top", isOn: $timer.alwaysOnTop)
+                .toggleStyle(.switch)
+            helper("Standard window: drag an edge or corner to resize. Borderless window: Control-drag the cube to move it; hold Control and drag the lower-right grip to resize. Control-click or right-click the cube for its menu. The time stays visible when its face turns away.")
         }
+    }
+
+    private var cycleTargetDescription: String {
+        if cycleTargetSelection != timer.requestedCycleTarget {
+            return "Current cycle: \(timer.cycleTarget). Selected target: \(cycleTargetSelection). Press Done to save; an active cycle keeps its current target."
+        }
+        if timer.cycleTargetChangePending {
+            return "Current cycle: \(timer.cycleTarget). Next cycle: \(timer.requestedCycleTarget)."
+        }
+        return "Current cycle: \(timer.cycleTarget). Changes during a cycle apply after its long break ends or is skipped."
+    }
+
+    private func durationRow(_ name: String, minutes: Binding<Int>,
+                             seconds: Binding<Int>) -> some View {
+        HStack(spacing: 6) {
+            Text(name)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+            Spacer(minLength: 8)
+            TextField("min", value: minutes, format: .number)
+                .frame(width: 43)
+                .multilineTextAlignment(.trailing)
+                .accessibilityLabel("\(name) minutes")
+            Text("m").accessibilityHidden(true)
+            TextField("sec", value: seconds, format: .number)
+                .frame(width: 43)
+                .multilineTextAlignment(.trailing)
+                .accessibilityLabel("\(name) seconds")
+            Text("s").accessibilityHidden(true)
+        }
+        .font(.system(size: 12, design: .monospaced))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(colors.panel, in: RoundedRectangle(cornerRadius: 9))
     }
 
     private var appearanceSettings: some View {
@@ -1397,7 +1423,7 @@ private struct SettingsView: View {
                           onToggleBorderless: {}, onToggleAlwaysOnTop: {},
                           onReset: {},
                           onSelect: { _ in })
-                .frame(height: 180)
+                .frame(height: 150)
                 .frame(maxWidth: .infinity)
                 .background(colors.panel, in: RoundedRectangle(cornerRadius: 12))
                 .allowsHitTesting(false)
@@ -1424,12 +1450,14 @@ private struct SettingsView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityValue(appearance.value.theme == theme ? "Selected" : "Not selected")
+                    .accessibilityHint("Applies this coordinated cube appearance")
                 }
             }
             if appearance.value.theme == .custom {
                 helper("Custom style — select a coordinated style to restore its colors.")
             }
-            Divider().padding(.vertical, 2)
+            Divider().padding(.vertical, 1)
             sectionTitle("SURFACE FINISH")
             Picker("Finish", selection: Binding(
                 get: { appearance.value.finish },
@@ -1440,8 +1468,7 @@ private struct SettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .labelsHidden()
-            Divider().padding(.vertical, 2)
+            Divider().padding(.vertical, 1)
             sectionTitle("COLORS")
             ColorPicker("Cube body", selection: colorBinding(\.body, setter: appearance.setBody))
             ColorPicker("Progress accent", selection: colorBinding(\.accent, setter: appearance.setAccent))
@@ -1466,17 +1493,20 @@ private struct SettingsView: View {
                     DisplayContrast.minimumRingRatio {
                 contrastWarning("Progress accent may be hard to see on the dark display.")
             }
-            Divider().padding(.vertical, 2)
+            Divider().padding(.vertical, 1)
             sectionTitle("LIGHTING & SHADOW")
             HStack {
-                Image(systemName: "sun.min")
+                Text("Intensity")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                 Slider(value: Binding(
                     get: { appearance.value.lighting },
                     set: { appearance.setLighting($0) }
                 ), in: 0...1)
-                Image(systemName: "sun.max")
+                .accessibilityLabel("Lighting and shadow intensity")
+                .accessibilityValue("\(Int(appearance.value.lighting * 100)) percent")
                 Text("\(Int(appearance.value.lighting * 100))%")
                     .frame(width: 40, alignment: .trailing)
+                    .accessibilityHidden(true)
             }
             .foregroundStyle(colors.secondary)
         }
@@ -1493,6 +1523,7 @@ private struct SettingsView: View {
             .font(.system(size: 10, weight: .bold, design: .monospaced))
             .tracking(1.3)
             .foregroundStyle(accent)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func helper(_ text: String) -> some View {
