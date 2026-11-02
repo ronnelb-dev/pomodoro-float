@@ -156,6 +156,321 @@ final class TimerModelTests: XCTestCase {
         XCTAssertEqual(model.remaining, 420)
     }
 
+    func testApplyNowPreservesElapsedTimeAcrossFocusAndBreakStates() {
+        for autoStart in [false, true] {
+            for phase: SessionPhase in [.focus, .breakTime] {
+                for paused in [false, true] {
+                    let (defaults, suite) = isolatedDefaults()
+                    defer { defaults.removePersistentDomain(forName: suite) }
+                    defaults.set(true, forKey: "flowEnabled")
+                    let source = ManualTimerTimeSource()
+                    let notifications = RecordingNotifications()
+                    let sound = RecordingSound()
+                    let model = TimerModel(defaults: defaults, now: source.wallNow,
+                                           notificationClient: notifications, soundClient: sound,
+                                           timeSource: source, appIsActive: { true })
+                    defer { model.reset() }
+                    model.autoStartNextPhase = autoStart
+                    model.selectAndStartPreset(phase.presetIndex)
+                    source.advance(60)
+                    model.refresh()
+                    if paused { model.pause() }
+                    let original = model.total
+                    let replacement = Int(original) + 120
+                    let priorCancels = notifications.cancelCount
+
+                    XCTAssertEqual(model.immediateDurationAction(
+                        for: .preset(phase.presetIndex), seconds: replacement), .applyNow)
+                    XCTAssertTrue(model.editDuration(.preset(phase.presetIndex),
+                                                 seconds: replacement, action: .applyNow))
+                    XCTAssertEqual(model.phase, phase)
+                    XCTAssertEqual(model.isRunning, !paused)
+                    XCTAssertEqual(model.isPaused, paused)
+                    XCTAssertEqual(model.total, Double(replacement))
+                    XCTAssertEqual(model.remaining, Double(replacement - 60), accuracy: 0.01)
+                    XCTAssertGreaterThan(notifications.cancelCount, priorCancels)
+                    if paused {
+                        XCTAssertNil(notifications.pending)
+                    } else {
+                        XCTAssertEqual(notifications.pending?.seconds ?? -1,
+                                       Double(replacement - 60), accuracy: 0.01)
+                    }
+                    XCTAssertEqual(model.completedFocusTotal, 0)
+                    XCTAssertEqual(sound.playCount, 0)
+                    XCTAssertNil(model.alertText)
+
+                    // The edit itself never hands off; the later deadline does.
+                    if paused { model.start() }
+                    source.advance(Double(replacement - 60))
+                    model.refresh()
+                    XCTAssertEqual(model.completedFocusTotal, phase == .focus ? 1 : 0)
+                    XCTAssertEqual(model.isRunning, autoStart)
+                    XCTAssertEqual(model.isComplete, !autoStart)
+                    if autoStart {
+                        XCTAssertEqual(model.phase,
+                                       phase == .focus ? .breakTime : .focus)
+                    }
+                }
+            }
+        }
+    }
+
+    func testUseNextTimeLeavesActiveFocusAndBreakSessionsUnchanged() {
+        for autoStart in [false, true] {
+            for phase: SessionPhase in [.focus, .breakTime] {
+                for paused in [false, true] {
+                    let (defaults, suite) = isolatedDefaults()
+                    defer { defaults.removePersistentDomain(forName: suite) }
+                    defaults.set(true, forKey: "flowEnabled")
+                    let source = ManualTimerTimeSource()
+                    let notifications = RecordingNotifications()
+                    let sound = RecordingSound()
+                    let model = TimerModel(defaults: defaults, now: source.wallNow,
+                                           notificationClient: notifications, soundClient: sound,
+                                           timeSource: source)
+                    defer { model.reset() }
+                    model.autoStartNextPhase = autoStart
+                    model.selectAndStartPreset(phase.presetIndex)
+                    source.advance(60)
+                    model.refresh()
+                    if paused { model.pause() }
+                    let oldTotal = model.total
+                    let oldRemaining = model.remaining
+                    let oldPending = notifications.pending?.seconds
+                    let oldCancels = notifications.cancelCount
+                    let replacement = Int(oldTotal) + 120
+
+                    XCTAssertTrue(model.editDuration(.preset(phase.presetIndex),
+                                                 seconds: replacement,
+                                                 action: .useNextTime))
+                    XCTAssertEqual(model.total, oldTotal)
+                    XCTAssertEqual(model.remaining, oldRemaining, accuracy: 0.01)
+                    XCTAssertEqual(model.isRunning, !paused)
+                    XCTAssertEqual(model.isPaused, paused)
+                    XCTAssertEqual(model.phase, phase)
+                    XCTAssertEqual(model.presetSeconds[phase.presetIndex], replacement)
+                    XCTAssertEqual(notifications.cancelCount, oldCancels)
+                    XCTAssertEqual(notifications.pending?.seconds, oldPending)
+                    XCTAssertEqual(sound.playCount, 0)
+                    XCTAssertNil(model.alertText)
+
+                    let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+                                              now: source.wallNow, timeSource: source)
+                    defer { restored.reset() }
+                    XCTAssertEqual(restored.total, oldTotal)
+                    XCTAssertEqual(restored.remaining, oldRemaining, accuracy: 0.01)
+                    XCTAssertEqual(restored.presetSeconds[phase.presetIndex], replacement)
+                }
+            }
+        }
+    }
+
+    func testRestartAtOrBelowElapsedNeverCompletesFocusOrBreak() {
+        for autoStart in [false, true] {
+            for phase: SessionPhase in [.focus, .breakTime] {
+                for paused in [false, true] {
+                    for replacement in [30, 60] {
+                        let (defaults, suite) = isolatedDefaults()
+                        defer { defaults.removePersistentDomain(forName: suite) }
+                        defaults.set(true, forKey: "flowEnabled")
+                        let source = ManualTimerTimeSource()
+                        let notifications = RecordingNotifications()
+                        let sound = RecordingSound()
+                        let model = TimerModel(defaults: defaults, now: source.wallNow,
+                                               notificationClient: notifications,
+                                               soundClient: sound, timeSource: source)
+                        defer { model.reset() }
+                        model.autoStartNextPhase = autoStart
+                        model.selectAndStartPreset(phase.presetIndex)
+                        source.advance(60)
+                        model.refresh()
+                        if paused { model.pause() }
+                        let oldDuration = model.presetSeconds[phase.presetIndex]
+
+                        XCTAssertEqual(model.immediateDurationAction(
+                            for: .preset(phase.presetIndex), seconds: replacement),
+                            .restartThisPhase)
+                        XCTAssertFalse(model.editDuration(.preset(phase.presetIndex),
+                                                      seconds: replacement, action: .applyNow))
+                        XCTAssertEqual(model.presetSeconds[phase.presetIndex], oldDuration)
+                        XCTAssertTrue(model.editDuration(.preset(phase.presetIndex),
+                                                     seconds: replacement,
+                                                     action: .restartThisPhase))
+                        XCTAssertEqual(model.phase, phase)
+                        XCTAssertEqual(model.total, Double(replacement))
+                        XCTAssertEqual(model.remaining, Double(replacement))
+                        XCTAssertEqual(model.isRunning, !paused)
+                        XCTAssertEqual(model.isPaused, paused)
+                        XCTAssertEqual(model.completedFocusTotal, 0)
+                        XCTAssertEqual(sound.playCount, 0)
+                        XCTAssertNil(model.alertText)
+                        if paused { XCTAssertNil(notifications.pending) }
+                        else {
+                            XCTAssertEqual(notifications.pending?.seconds ?? -1,
+                                           Double(replacement), accuracy: 0.01)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testLongBreakDurationAppliesOnlyToActiveLongBreak() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "flowEnabled")
+        let source = ManualTimerTimeSource()
+        save(SavedTimerSession(version: 4, state: .completed, selectedPreset: 2,
+                               phase: .focus, total: 1_500,
+                               deadline: nil, pausedRemaining: nil,
+                               activeFlowEnabled: true, pomodoroModeEnabled: true,
+                               focusesInCycle: 4, completedFocusTotal: 4), in: defaults)
+        let notifications = RecordingNotifications()
+        let sound = RecordingSound()
+        let model = TimerModel(defaults: defaults, now: source.wallNow,
+                               notificationClient: notifications, soundClient: sound,
+                               timeSource: source)
+        defer { model.reset() }
+        model.startNextPhase()
+        source.advance(100)
+        model.refresh()
+        XCTAssertEqual(model.phase, .longBreak)
+        XCTAssertNil(model.immediateDurationAction(for: .preset(0), seconds: 420))
+        XCTAssertEqual(model.immediateDurationAction(for: .longBreak, seconds: 1_200),
+                       .applyNow)
+        XCTAssertTrue(model.editDuration(.longBreak, seconds: 1_200, action: .applyNow))
+        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(model.total, 1_200)
+        XCTAssertEqual(model.remaining, 1_100, accuracy: 0.01)
+        XCTAssertEqual(notifications.pending?.seconds ?? -1, 1_100, accuracy: 0.01)
+        XCTAssertEqual(model.completedFocusTotal, 4)
+        XCTAssertEqual(sound.playCount, 0)
+        XCTAssertNil(model.alertText)
+
+        model.pause()
+        XCTAssertEqual(model.immediateDurationAction(for: .longBreak, seconds: 60),
+                       .restartThisPhase)
+        XCTAssertTrue(model.editDuration(.longBreak, seconds: 60,
+                                       action: .restartThisPhase))
+        XCTAssertTrue(model.isPaused)
+        XCTAssertEqual(model.phase, .longBreak)
+        XCTAssertEqual(model.remaining, 60)
+        XCTAssertNil(notifications.pending)
+        XCTAssertEqual(sound.playCount, 0)
+    }
+
+    func testOneOffPresetEditLeavesSuspendedPomodoroFrozen() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "flowEnabled")
+        let source = ManualTimerTimeSource()
+        let notifications = RecordingNotifications()
+        let sound = RecordingSound()
+        let model = TimerModel(defaults: defaults, now: source.wallNow,
+                               notificationClient: notifications, soundClient: sound,
+                               timeSource: source)
+        defer { model.reset() }
+        model.start()
+        source.advance(60)
+        model.refresh()
+        model.selectAndStartPreset(1)
+        XCTAssertTrue(model.hasSuspendedPomodoro)
+        source.advance(30)
+        model.refresh()
+        XCTAssertNil(model.immediateDurationAction(for: .preset(2), seconds: 1_800))
+        XCTAssertTrue(model.editDuration(.preset(2), seconds: 1_800,
+                                      action: .useNextTime))
+        XCTAssertEqual(model.total, 600)
+        XCTAssertEqual(model.remaining, 570, accuracy: 0.01)
+        XCTAssertEqual(model.immediateDurationAction(for: .preset(1), seconds: 720),
+                       .applyNow)
+        XCTAssertTrue(model.editDuration(.preset(1), seconds: 720,
+                                      action: .applyNow))
+        XCTAssertEqual(model.total, 720)
+        XCTAssertEqual(model.remaining, 690, accuracy: 0.01)
+        XCTAssertEqual(notifications.pending?.seconds ?? -1, 690, accuracy: 0.01)
+        XCTAssertEqual(sound.playCount, 0)
+        XCTAssertNil(model.alertText)
+        XCTAssertTrue(model.resumePomodoro())
+        XCTAssertEqual(model.phase, .focus)
+        XCTAssertEqual(model.total, 1_500)
+        XCTAssertEqual(model.remaining, 1_440, accuracy: 0.01)
+        model.reset()
+        XCTAssertEqual(model.total, 1_800)
+    }
+
+    func testApplyNowUsesContinuousElapsedTimeAcrossSleepAndWallClockJump() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ManualTimerTimeSource()
+        let notifications = RecordingNotifications()
+        let model = TimerModel(defaults: defaults, now: source.wallNow,
+                               notificationClient: notifications, timeSource: source)
+        defer { model.reset() }
+        model.start()
+        model.prepareForSleep()
+        source.advance(120)
+        source.jumpWall(3_600)
+        XCTAssertTrue(model.editDuration(.preset(0), seconds: 360, action: .applyNow))
+        XCTAssertEqual(model.remaining, 240, accuracy: 0.01)
+        XCTAssertEqual(saved(in: defaults)?.deadline?.timeIntervalSince(source.wallNow) ?? -1,
+                       240, accuracy: 0.01)
+        XCTAssertNil(notifications.pending)
+        model.resumeAfterSleep()
+        XCTAssertEqual(notifications.pending?.seconds ?? -1, 240, accuracy: 0.01)
+    }
+
+    func testDurationChoicesForPresetCountdownsWithAutoCycleOff() {
+        for index in [0, 2, 4] {
+            for paused in [false, true] {
+                for action in [DurationEditAction.applyNow, .useNextTime,
+                               .restartThisPhase] {
+                    let (defaults, suite) = isolatedDefaults()
+                    defer { defaults.removePersistentDomain(forName: suite) }
+                    let source = ManualTimerTimeSource()
+                    let notifications = RecordingNotifications()
+                    let sound = RecordingSound()
+                    let model = TimerModel(defaults: defaults, now: source.wallNow,
+                                           notificationClient: notifications, soundClient: sound,
+                                           timeSource: source)
+                    defer { model.reset() }
+                    model.selectAndStartPreset(index)
+                    source.advance(60)
+                    model.refresh()
+                    if paused { model.pause() }
+                    let oldTotal = model.total
+                    let oldRemaining = model.remaining
+                    let replacement = action == .restartThisPhase
+                        ? 30 : Int(oldTotal) + 120
+
+                    XCTAssertTrue(model.editDuration(.preset(index), seconds: replacement,
+                                                  action: action))
+                    XCTAssertFalse(model.flowEnabled)
+                    XCTAssertEqual(model.isRunning, !paused)
+                    XCTAssertEqual(model.isPaused, paused)
+                    XCTAssertEqual(model.selectedPreset, index)
+                    XCTAssertEqual(model.presetSeconds[index], replacement)
+                    switch action {
+                    case .applyNow:
+                        XCTAssertEqual(model.total, Double(replacement))
+                        XCTAssertEqual(model.remaining,
+                                       Double(replacement - 60), accuracy: 0.01)
+                    case .useNextTime:
+                        XCTAssertEqual(model.total, oldTotal)
+                        XCTAssertEqual(model.remaining, oldRemaining, accuracy: 0.01)
+                    case .restartThisPhase:
+                        XCTAssertEqual(model.total, 30)
+                        XCTAssertEqual(model.remaining, 30)
+                    }
+                    XCTAssertEqual(model.completedFocusTotal, 0)
+                    XCTAssertEqual(sound.playCount, 0)
+                    XCTAssertNil(model.alertText)
+                    if paused { XCTAssertNil(notifications.pending) }
+                }
+            }
+        }
+    }
+
     func testRunningSessionRestoresItsDeadlineAndNotification() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }

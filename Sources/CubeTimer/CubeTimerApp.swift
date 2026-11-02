@@ -1266,7 +1266,7 @@ private struct SettingsView: View {
                         .foregroundStyle(colors.secondary)
                 }
                 Spacer()
-                Button("Done") { savePresets(); dismiss() }
+                Button("Done") { timer.setCycleTarget(cycleTargetSelection); dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
             Picker("Settings section", selection: $tab) {
@@ -1331,12 +1331,14 @@ private struct SettingsView: View {
             Divider().padding(.vertical, 3)
             sectionTitle("PRESETS & LONG BREAK")
             ForEach(TimerModel.defaultDurations.indices, id: \.self) { index in
-                durationRow(TimerModel.presetNames[index] + " preset",
-                            minutes: $minutes[index], seconds: $seconds[index])
+                durationRow(durationName(for: index), setting: .preset(index),
+                            minutes: $minutes[index], seconds: $seconds[index],
+                            savedSeconds: timer.presetSeconds[index])
             }
-            durationRow("Long break", minutes: $longBreakMinutes,
-                        seconds: $longBreakSeconds)
-            helper("Durations: 00:01–99:59. Press Done to save these edits and the cycle target.")
+            durationRow("Long Break", setting: .longBreak,
+                        minutes: $longBreakMinutes, seconds: $longBreakSeconds,
+                        savedSeconds: timer.longBreakSeconds)
+            helper("Durations: 00:01–99:59. Choose a row action to save it. Done saves the cycle target; closing discards unfinished duration edits.")
         }
     }
 
@@ -1384,27 +1386,75 @@ private struct SettingsView: View {
         return "Current cycle: \(timer.cycleTarget). Changes during a cycle apply after its long break ends or is skipped."
     }
 
-    private func durationRow(_ name: String, minutes: Binding<Int>,
-                             seconds: Binding<Int>) -> some View {
-        HStack(spacing: 6) {
-            Text(name)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-            Spacer(minLength: 8)
-            TextField("min", value: minutes, format: .number)
-                .frame(width: 43)
-                .multilineTextAlignment(.trailing)
-                .accessibilityLabel("\(name) minutes")
-            Text("m").accessibilityHidden(true)
-            TextField("sec", value: seconds, format: .number)
-                .frame(width: 43)
-                .multilineTextAlignment(.trailing)
-                .accessibilityLabel("\(name) seconds")
-            Text("s").accessibilityHidden(true)
+    private func durationName(for index: Int) -> String {
+        switch index {
+        case 0: "5 MIN · Short Break"
+        case 2: "25 MIN · Focus"
+        default: "\(TimerModel.presetNames[index]) preset"
         }
-        .font(.system(size: 12, design: .monospaced))
+    }
+
+    private func durationRow(_ name: String, setting: DurationSetting,
+                             minutes: Binding<Int>, seconds: Binding<Int>,
+                             savedSeconds: Int) -> some View {
+        let proposed = TimerEngine.clampedDuration(
+            min(99, max(0, minutes.wrappedValue)) * 60 +
+                min(59, max(0, seconds.wrappedValue)))
+        let changed = proposed != savedSeconds
+        let immediate = changed
+            ? timer.immediateDurationAction(for: setting, seconds: proposed) : nil
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Text(name)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                Spacer(minLength: 8)
+                TextField("min", value: minutes, format: .number)
+                    .frame(width: 43)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityLabel("\(name) minutes")
+                Text("m").accessibilityHidden(true)
+                TextField("sec", value: seconds, format: .number)
+                    .frame(width: 43)
+                    .multilineTextAlignment(.trailing)
+                    .accessibilityLabel("\(name) seconds")
+                Text("s").accessibilityHidden(true)
+            }
+            .font(.system(size: 12, design: .monospaced))
+            if changed {
+                HStack(spacing: 12) {
+                    if let immediate {
+                        Button(immediate == .applyNow ? "Apply Now" : "Restart This Phase") {
+                            let action: DurationEditAction = immediate == .applyNow
+                                ? .applyNow : .restartThisPhase
+                            commitDuration(setting, proposed: proposed, action: action,
+                                           minutes: minutes, seconds: seconds)
+                        }
+                        .accessibilityLabel("\(immediate == .applyNow ? "Apply now" : "Restart this phase") with \(name) duration")
+                        .accessibilityHint(immediate == .applyNow
+                            ? "Preserves elapsed time and the current running or paused state"
+                            : "Starts this phase at its full new duration without changing its running or paused state")
+                    }
+                    Button("Use Next Time") {
+                        commitDuration(setting, proposed: proposed, action: .useNextTime,
+                                       minutes: minutes, seconds: seconds)
+                    }
+                    .accessibilityLabel("Use \(name) duration next time")
+                    .accessibilityHint("Saves the duration without changing the current running or paused timer")
+                }
+                .font(.system(size: 11, weight: .semibold))
+            }
+        }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(colors.panel, in: RoundedRectangle(cornerRadius: 9))
+    }
+
+    private func commitDuration(_ setting: DurationSetting, proposed: Int,
+                                action: DurationEditAction, minutes: Binding<Int>,
+                                seconds: Binding<Int>) {
+        guard timer.editDuration(setting, seconds: proposed, action: action) else { return }
+        minutes.wrappedValue = proposed / 60
+        seconds.wrappedValue = proposed % 60
     }
 
     private var appearanceSettings: some View {
@@ -1540,15 +1590,4 @@ private struct SettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func savePresets() {
-        for index in TimerModel.defaultDurations.indices {
-            let minute = min(99, max(0, minutes[index]))
-            let second = min(59, max(0, seconds[index]))
-            timer.setPreset(index, seconds: minute * 60 + second)
-        }
-        let minute = min(99, max(0, longBreakMinutes))
-        let second = min(59, max(0, longBreakSeconds))
-        timer.setLongBreak(seconds: minute * 60 + second)
-        timer.setCycleTarget(cycleTargetSelection)
-    }
 }

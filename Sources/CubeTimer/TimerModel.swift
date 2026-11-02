@@ -99,6 +99,22 @@ struct SuspendedPomodoroSession: Codable {
     let remaining: TimeInterval
 }
 
+enum DurationSetting: Equatable {
+    case preset(Int)
+    case longBreak
+}
+
+enum DurationImmediateAction: Equatable {
+    case applyNow
+    case restartThisPhase
+}
+
+enum DurationEditAction {
+    case useNextTime
+    case applyNow
+    case restartThisPhase
+}
+
 private struct PresetUndo {
     let session: SavedTimerSession
     let flowEnabled: Bool
@@ -368,6 +384,85 @@ final class TimerModel: ObservableObject {
             total = TimeInterval(value)
             remaining = total
             saveSession()
+        }
+    }
+
+    /// Recheck this when a row action is chosen: the running timer may have
+    /// crossed the proposed duration while Settings was open.
+    func immediateDurationAction(for setting: DurationSetting,
+                                 seconds: Int) -> DurationImmediateAction? {
+        guard isRunning || isPaused, durationSettingIsCurrent(setting) else { return nil }
+        let now = timeSource.continuousNow
+        if isRunning, (continuousDeadline ?? 0) <= now { return nil }
+        let elapsed = elapsedForDurationEdit(at: now)
+        return TimeInterval(TimerEngine.clampedDuration(seconds)) > elapsed
+            ? .applyNow : .restartThisPhase
+    }
+
+    @discardableResult
+    func editDuration(_ setting: DurationSetting, seconds: Int,
+                      action: DurationEditAction) -> Bool {
+        guard durationSettingIsValid(setting) else { return false }
+        let value = TimerEngine.clampedDuration(seconds)
+        if case .useNextTime = action {
+            saveDurationPreference(setting, seconds: value)
+            return true
+        }
+        guard isRunning || isPaused, durationSettingIsCurrent(setting) else { return false }
+        let now = timeSource.continuousNow
+        if isRunning, (continuousDeadline ?? 0) <= now { return false }
+        let elapsed = elapsedForDurationEdit(at: now)
+        let restarts = TimeInterval(value) <= elapsed
+        switch action {
+        case .applyNow where restarts, .restartThisPhase where !restarts:
+            return false
+        case .useNextTime:
+            return false
+        default:
+            break
+        }
+
+        saveDurationPreference(setting, seconds: value)
+        total = TimeInterval(value)
+        remaining = restarts ? total : total - elapsed
+        if isRunning {
+            continuousDeadline = now + remaining
+            deadline = timeSource.wallNow.addingTimeInterval(remaining)
+        }
+        // A settings edit must not call completion or advance Auto-Cycle.
+        notifications?.cancel()
+        saveSession()
+        if isRunning { scheduleCurrentNotification() }
+        return true
+    }
+
+    private func durationSettingIsValid(_ setting: DurationSetting) -> Bool {
+        switch setting {
+        case .preset(let index): Self.defaultDurations.indices.contains(index)
+        case .longBreak: true
+        }
+    }
+
+    private func durationSettingIsCurrent(_ setting: DurationSetting) -> Bool {
+        switch setting {
+        case .preset(let index):
+            return index == selectedPreset && !(flowEnabled && phase == .longBreak)
+        case .longBreak:
+            return flowEnabled && phase == .longBreak
+        }
+    }
+
+    private func elapsedForDurationEdit(at continuousNow: TimeInterval) -> TimeInterval {
+        let currentRemaining = isRunning
+            ? max(0, (continuousDeadline ?? continuousNow) - continuousNow)
+            : remaining
+        return min(total, max(0, total - currentRemaining))
+    }
+
+    private func saveDurationPreference(_ setting: DurationSetting, seconds: Int) {
+        switch setting {
+        case .preset(let index): setPreset(index, seconds: seconds)
+        case .longBreak: setLongBreak(seconds: seconds)
         }
     }
 
