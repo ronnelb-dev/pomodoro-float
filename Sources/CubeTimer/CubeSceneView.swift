@@ -129,12 +129,14 @@ struct CubeSceneView: NSViewRepresentable {
     var longBreakDue: Bool = false
     var pomodoroSuspended: Bool = false
     let displayAction: String
+    var displayStyle: TimerDisplayStyle = .cube
     let onDisplayClick: () -> Void
     let onOpenSettings: () -> Void
     let onShowFloatingHelp: () -> Void
     let onToggleBorderless: () -> Void
     let onToggleAlwaysOnTop: () -> Void
     let onReset: () -> Void
+    var onSelectDisplayStyle: ((TimerDisplayStyle) -> Void)? = nil
     var focusMarks: CubeFocusProgress? = nil
     var sessionLabel: String? = nil
     var nextPhaseName: String? = nil
@@ -193,6 +195,8 @@ struct CubeSceneView: NSViewRepresentable {
         view.toggleBorderlessHandler = interactive ? onToggleBorderless : nil
         view.toggleAlwaysOnTopHandler = interactive ? onToggleAlwaysOnTop : nil
         view.resetHandler = interactive ? onReset : nil
+        view.displayStyle = displayStyle
+        view.selectDisplayStyleHandler = interactive ? onSelectDisplayStyle : nil
         view.nextPhaseName = interactive ? nextPhaseName : nil
         view.startNextPhaseHandler = interactive ? onStartNextPhase : nil
         view.skipBreakHandler = interactive ? onSkipBreak : nil
@@ -573,6 +577,8 @@ final class CubeSCNView: SCNView {
     var toggleBorderlessHandler: (() -> Void)?
     var toggleAlwaysOnTopHandler: (() -> Void)?
     var resetHandler: (() -> Void)?
+    var selectDisplayStyleHandler: ((TimerDisplayStyle) -> Void)?
+    var displayStyle: TimerDisplayStyle = .cube
     var nextPhaseName: String?
     var startNextPhaseHandler: (() -> Void)?
     var skipBreakHandler: (() -> Void)?
@@ -808,10 +814,22 @@ final class CubeSCNView: SCNView {
                                   keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
-        let help = NSMenuItem(title: "Floating Cube Help", action: #selector(showFloatingHelp),
+        let helpTitle = displayStyle == .cube ? "Floating Cube Help" : "Floating Digital Timer Help"
+        let help = NSMenuItem(title: helpTitle, action: #selector(showFloatingHelp),
                               keyEquivalent: "")
         help.target = self
         menu.addItem(help)
+        menu.addItem(.separator())
+        let cubeStyle = NSMenuItem(title: "Cube Timer", action: #selector(selectCubeStyle),
+                                   keyEquivalent: "")
+        cubeStyle.target = self
+        cubeStyle.state = displayStyle == .cube ? .on : .off
+        menu.addItem(cubeStyle)
+        let digitalStyle = NSMenuItem(title: "Digital Timer", action: #selector(selectDigitalStyle),
+                                      keyEquivalent: "")
+        digitalStyle.target = self
+        digitalStyle.state = displayStyle == .digital ? .on : .off
+        menu.addItem(digitalStyle)
         menu.addItem(.separator())
         let mode = NSMenuItem(title: "Borderless Window", action: #selector(toggleBorderless),
                               keyEquivalent: "")
@@ -859,6 +877,8 @@ final class CubeSCNView: SCNView {
     @objc private func toggleBorderless() { toggleBorderlessHandler?() }
     @objc private func toggleAlwaysOnTop() { toggleAlwaysOnTopHandler?() }
     @objc private func resetTimer() { resetHandler?() }
+    @objc private func selectCubeStyle() { selectDisplayStyleHandler?(.cube) }
+    @objc private func selectDigitalStyle() { selectDisplayStyleHandler?(.digital) }
     @objc private func startNextPhase() { startNextPhaseHandler?() }
     @objc private func skipBreak() { skipBreakHandler?() }
     @objc private func resumePomodoro() { resumePomodoroHandler?() }

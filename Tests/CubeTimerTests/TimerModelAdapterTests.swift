@@ -20,4 +20,37 @@ final class TimerModelAdapterTests: XCTestCase {
         XCTAssertTrue(model.sessionSnapshot.isRunning)
         model.reset()
     }
+
+    func testDisplayStyleDefaultsPersistsAndDoesNotChangeTimerSession() {
+        let suite = "CubeTimerDisplayStyleTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        XCTAssertEqual(model.displayStyle, .cube)
+
+        model.start()
+        let beforeStyleChange = model.sessionSnapshot
+        model.displayStyle = .digital
+        XCTAssertEqual(model.sessionSnapshot, beforeStyleChange)
+        XCTAssertTrue(model.isRunning)
+
+        model.reset()
+        let reopenedModel = TimerModel(defaults: defaults, notificationsEnabled: false)
+        XCTAssertEqual(reopenedModel.displayStyle, .digital)
+        reopenedModel.reset()
+    }
+
+    func testInvalidDisplayStyleDefaultsToCube() {
+        let suite = "CubeTimerInvalidDisplayStyleTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set("unknown", forKey: TimerModel.displayStyleKey)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        XCTAssertEqual(model.displayStyle, .cube)
+        model.reset()
+    }
 }

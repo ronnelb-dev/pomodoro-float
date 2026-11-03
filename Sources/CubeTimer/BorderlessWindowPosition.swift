@@ -2,6 +2,9 @@ import AppKit
 
 /// Keeps a draggable cube reachable without blocking movement between displays.
 enum BorderlessWindowPosition {
+    static let minimumSide: CGFloat = TimerWindowLayout.floatingMinimumSide
+    static let maximumSide: CGFloat = TimerWindowLayout.floatingMaximumSide
+
     static func restoredFrame(_ saved: NSRect, visibleFrames: [NSRect]) -> NSRect {
         guard let screen = visibleFrames.filter({ $0.width > 0 && $0.height > 0 }).max(by: {
             let a = NSIntersectionRect($0, saved)
@@ -9,12 +12,20 @@ enum BorderlessWindowPosition {
             return a.width * a.height < b.width * b.height
         }) else { return saved }
         var frame = saved
-        let side = min(screen.width, screen.height, 850,
-                       max(240, min(saved.width, saved.height)))
+        let side = min(screen.width, screen.height, maximumSide,
+                       max(minimumSide, min(saved.width, saved.height)))
         frame.size = NSSize(width: side, height: side)
         frame.origin = clampedOrigin(frame.origin, size: frame.size,
                                      visibleFrames: visibleFrames)
         return frame
+    }
+
+    static func resizedFrame(start: NSRect, horizontalDelta: CGFloat,
+                             verticalDelta: CGFloat, visibleFrame: NSRect?) -> NSRect {
+        TimerWindowLayout.resizedFloatingFrame(start: start,
+                                               horizontalDelta: horizontalDelta,
+                                               verticalDelta: verticalDelta,
+                                               visibleFrame: visibleFrame)
     }
 
     static func clampedOrigin(_ proposed: NSPoint, size: NSSize,

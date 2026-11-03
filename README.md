@@ -1,35 +1,62 @@
 # Pomodoro Float
 
-Pomodoro Float is a native macOS focus timer built around a rotatable 3D cube. Choose a timer on a numbered face, keep the countdown floating beside your work, and customize its appearance and sounds.
+Pomodoro Float is a native macOS focus timer with two displays: a rotatable 3D cube and a classic seven-segment digital timer. Use it in a standard window or as a compact floating timer beside your work.
 
-![Pomodoro Float's default dark cube showing a 24:53 countdown](assets/screenshots/pomodoro-float-cube.jpg)
+![Standard window showing the rotatable Pomodoro Float cube and its countdown](assets/screenshots/pomodoro-float-cube.jpg)
+
+## Features
+
+- Choose Cube or Digital display; the choice is saved between launches.
+- Switch between the full standard window and a compact floating window. Keep the timer visible while working, and resize either window.
+- Run customizable Pomodoro focus and break cycles, with progress, completion alerts, and session restore.
+- Adjust themes, cube appearance, sounds, and timer behavior in the built-in settings.
 
 ## Requirements
 
 - macOS 14 or later.
-- Full Xcode installation with a Swift 5.9 or newer toolchain. Apple Command Line Tools alone cannot build the SwiftUI app.
+- A full Xcode installation with Swift 5.9 or later. The app uses SwiftUI and SceneKit; Apple Command Line Tools alone are not sufficient to build it.
 
-## Build, launch, and test
+## Build and run
 
-Run from the repository root (adjust the Xcode path if it is installed elsewhere):
+From the repository root:
 
 ```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/build-app.sh
+./scripts/build-app.sh
 open "build/Pomodoro Float.app"
 ```
 
-The script builds a release executable, packages the sounds, and ad-hoc signs the app for local use. To run the tests:
+The script builds a release executable, packages the app icon and sounds, and ad-hoc signs the app for local use. Select the Xcode installation to use with `DEVELOPER_DIR` if needed:
 
 ```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/build-app.sh
 ```
 
-## Use the timer
+Run the test suite with:
 
-- **Choose a preset:** The five defaults are 5, 10, 25, 50, and 60 minutes. Click a numbered cube face or press **Command-1** through **Command-5** to select and start it. Preset buttons in the standard window only select; press **Start** when ready. You can edit their durations in **Settings → Timer → Presets & Long Break**.
-- **Start, pause, or resume:** Click the countdown, press **Space**, or use the visible control. **Reset** or **Command-R** returns the selected timer to its full duration.
-- **Rotate the cube:** Drag it to inspect the other faces. Click the viewfinder to bring the countdown face back without changing the timer.
-- **Resize or float:** Drag an edge or corner of the standard window to resize it. Press **Command-Shift-B** to toggle the transparent borderless cube. In borderless mode, **Control-drag** the cube to move it; hold **Control** and drag the lower-right grip to resize it. Right-click the cube for window controls.
-- **Customize:** Open **Settings** with **Command-,**. The **Timer**, **Appearance**, **Window**, and **Sound** tabs group Pomodoro settings, cube styling, window behavior, and alerts. For each edited duration, choose **Apply Now** to preserve elapsed time or **Use Next Time** to leave the active countdown unchanged. If the new duration has already elapsed, choose **Restart This Phase** or **Use Next Time**. Unchosen duration edits are discarded when Settings closes; **Done** saves the cycle target. Other controls apply immediately. In-app volume is in **Sound**; macOS controls notification sound when the app is hidden or closed.
+```sh
+swift test
+```
 
-For focus and break cycles, turn on **Auto-cycle focus and break** in **Settings → Timer**. The defaults are a 25-minute focus, 5-minute short break, and 15-minute long break after four focuses. Timer state and settings are saved across launches.
+## Project map
+
+| Area | Responsibility |
+| --- | --- |
+| `Sources/CubeTimer/TimerEngine.swift` | Pure countdown math, formatting, and progress. |
+| `Sources/CubeTimer/TimerSessionCoordinator.swift` and `TimerSessionPersistence.swift` | Session transitions, domain events, persistence, and restore compatibility. |
+| `Sources/CubeTimer/TimerModel.swift` | SwiftUI-facing timer state, preferences, and coordination of macOS effects. |
+| `Sources/CubeTimer/CubeSceneView.swift` and `DigitalTimerView.swift` | SceneKit cube display and seven-segment digital display. |
+| `Sources/CubeTimer/CubeTimerApp.swift` | SwiftUI app, window configuration, and timer controls. |
+| `Tests/CubeTimerTests/` | Timer behavior, persistence, display, appearance, and window-layout tests. |
+
+## Useful controls
+
+- **Start, pause, or resume:** Click the timer or press **Space**. **Command-R** resets it.
+- **Start a preset:** **Command-1** through **Command-5** starts the five default presets: 5, 10, 25, 50, and 60 minutes.
+- **Settings:** Press **Command-,** to adjust durations, Pomodoro cycles, appearance, sounds, and window behavior.
+- **Floating window:** Press **Command-Shift-B** to toggle it. **Control-drag** the cube to move the floating window; hold **Control** and drag its lower-right grip to resize it. Right-click for timer and window controls.
+
+Pomodoro defaults are 25 minutes of focus, a 5-minute short break, and a 15-minute long break after four focuses. Timer sessions and preferences are saved across launches.
+
+## License
+
+[MIT](LICENSE)

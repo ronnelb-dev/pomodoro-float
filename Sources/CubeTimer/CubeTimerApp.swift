@@ -157,12 +157,24 @@ private struct WindowConfigurator: NSViewRepresentable {
                 zoom.action = #selector(Coordinator.toggleZoom(_:))
             }
             window.level = alwaysOnTop ? .floating : .normal
-            if alwaysOnTop {
-                window.collectionBehavior.insert(.canJoinAllSpaces)
-                window.collectionBehavior.insert(.fullScreenAuxiliary)
+            if borderless {
+                window.collectionBehavior.remove(.fullScreenPrimary)
+                if alwaysOnTop {
+                    window.collectionBehavior.insert(.canJoinAllSpaces)
+                    window.collectionBehavior.insert(.fullScreenAuxiliary)
+                } else {
+                    window.collectionBehavior.remove(.canJoinAllSpaces)
+                    window.collectionBehavior.remove(.fullScreenAuxiliary)
+                }
             } else {
-                window.collectionBehavior.remove(.canJoinAllSpaces)
                 window.collectionBehavior.remove(.fullScreenAuxiliary)
+                window.collectionBehavior.remove(.fullScreenNone)
+                window.collectionBehavior.insert(.fullScreenPrimary)
+                if alwaysOnTop {
+                    window.collectionBehavior.insert(.canJoinAllSpaces)
+                } else {
+                    window.collectionBehavior.remove(.canJoinAllSpaces)
+                }
             }
         }
     }
@@ -182,10 +194,14 @@ private struct WindowConfigurator: NSViewRepresentable {
                                       : (standardStyleMask ?? [.titled, .closable, .miniaturizable])
                                           .union(.resizable)
         window.aspectRatio = borderless ? NSSize(width: 1, height: 1) : .zero
-        window.minSize = borderless ? NSSize(width: 240, height: 240)
-                                    : NSSize(width: 350, height: 490)
-        window.maxSize = borderless ? NSSize(width: 850, height: 850)
-                                    : NSSize(width: 850, height: 1000)
+        window.minSize = borderless
+            ? NSSize(width: BorderlessWindowPosition.minimumSide,
+                     height: BorderlessWindowPosition.minimumSide)
+            : TimerWindowLayout.standardMinimumSize
+        window.maxSize = borderless
+            ? NSSize(width: BorderlessWindowPosition.maximumSide,
+                     height: BorderlessWindowPosition.maximumSide)
+            : TimerWindowLayout.standardMaximumSize
         window.titleVisibility = borderless ? .hidden : .visible
         window.titlebarAppearsTransparent = borderless
         window.titlebarSeparatorStyle = borderless ? .none : .automatic
@@ -220,17 +236,8 @@ private struct WindowConfigurator: NSViewRepresentable {
             return BorderlessWindowPosition.restoredFrame(
                 frame, visibleFrames: NSScreen.screens.map(\.visibleFrame))
         }
-        let screen = NSScreen.screens.max {
-            let a = NSIntersectionRect($0.visibleFrame, frame)
-            let b = NSIntersectionRect($1.visibleFrame, frame)
-            return a.width * a.height < b.width * b.height
-        } ?? NSScreen.main
-        guard let visible = screen?.visibleFrame else { return frame }
-        frame.size.width = min(visible.width, 850, max(350, frame.width))
-        frame.size.height = min(visible.height, 1000, max(490, frame.height))
-        frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
-        frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
-        return frame
+        return StandardWindowPosition.restoredFrame(
+            frame, visibleFrames: NSScreen.screens.map(\.visibleFrame))
     }
 }
 
@@ -452,15 +459,11 @@ private struct BorderlessResizeGrip: NSViewRepresentable {
             let pointer = window.convertPoint(toScreen: event.locationInWindow)
             let dx = pointer.x - pointerStart.x
             let dy = pointerStart.y - pointer.y
-            let delta = abs(dx) >= abs(dy) ? dx : dy
             let visible = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-            let available = visible.map {
-                min(850, $0.width, $0.height, $0.maxX - frameStart.minX,
-                    frameStart.maxY - $0.minY)
-            } ?? 850
-            let side = min(max(240, available), max(240, frameStart.width + delta))
-            window.setFrame(NSRect(x: frameStart.minX, y: frameStart.maxY - side,
-                                   width: side, height: side), display: true)
+            let frame = BorderlessWindowPosition.resizedFrame(
+                start: frameStart, horizontalDelta: dx, verticalDelta: dy,
+                visibleFrame: visible)
+            window.setFrame(frame, display: true)
         }
 
         override func mouseUp(with event: NSEvent) {
@@ -497,7 +500,7 @@ private struct BorderlessResizeGrip: NSViewRepresentable {
     }
 }
 
-private struct UIColors {
+struct UIColors {
     let background: Color
     let panel: Color
     let edge: Color
@@ -554,6 +557,28 @@ private struct TimerView: View {
         return "Start"
     }
 
+    private var digitalPhaseLabel: String {
+        if timer.flowEnabled { return timer.phase.displayName }
+        return timer.hasSuspendedPomodoro ? "Pomodoro Paused" : "Countdown"
+    }
+
+    private var digitalStatusLabel: String {
+        timer.isComplete ? "DONE" : timer.isRunning ? "RUNNING" :
+            timer.isPaused ? "PAUSED" : "READY"
+    }
+
+    private var digitalFocusProgress: String? {
+        timer.pomodoroModeEnabled || timer.hasSuspendedPomodoro
+            ? timer.focusProgressLabel : nil
+    }
+
+    private var floatingHintText: String {
+        if timer.displayStyle == .cube {
+            return "Click timer: start or pause · Drag: rotate\nControl-drag to move · Corner grip to resize\nRight-click for timer controls"
+        }
+        return "Click timer: start or pause\nControl-drag to move · Corner grip to resize\nRight-click for presets and controls"
+    }
+
     var body: some View {
         Group {
             if timer.borderlessWindow { borderlessContent }
@@ -577,36 +602,37 @@ private struct TimerView: View {
 
     private var standardContent: some View {
         GeometryReader { geometry in
-            let compact = geometry.size.height < 610 || geometry.size.width < 390
-            let spacing: CGFloat = compact ? 6 : 12
-            let verticalPadding: CGFloat = compact ? 12 : 20
-            let fixedHeight: CGFloat = 30 + 13 + 20 + (compact ? 49 : 56)
-                + (compact ? 47 : 52) + 12 + spacing * 8 + verticalPadding * 2
-                + (timer.hasSuspendedPomodoro ? 15 : 0)
-                + (timer.pendingFlowEnabled != nil ? 15 : 0)
-                + (timer.canSkipBreak ? 15 : 0)
-            let cubeHeight = min(510, max(160, geometry.size.height - fixedHeight))
+            let transientRows = (timer.hasSuspendedPomodoro ? 1 : 0)
+                + (timer.pendingFlowEnabled != nil ? 1 : 0)
+                + (timer.canSkipBreak ? 1 : 0)
+            let metrics = TimerWindowLayout.standardMetrics(
+                size: geometry.size, transientRowCount: transientRows)
             ZStack {
                 colors.background.ignoresSafeArea()
                 RadialGradient(colors: [accent.opacity(0.10), .clear],
                                center: .top, startRadius: 10, endRadius: 500)
                     .ignoresSafeArea()
 
-                VStack(spacing: spacing) {
+                VStack(spacing: metrics.spacing) {
                     header
                     Spacer(minLength: 0)
                     status
-                    cube(height: cubeHeight)
+                    if timer.displayStyle == .cube {
+                        cube(height: metrics.displayHeight)
+                    } else {
+                        digitalPanel(compact: metrics.compact)
+                            .frame(height: metrics.displayHeight)
+                    }
                     progress
                     Spacer(minLength: 0)
-                    presetPicker(compact: compact)
-                    controls(compact: compact)
+                    presetPicker(compact: metrics.compact)
+                    controls(compact: metrics.compact)
                     footer
                 }
                 .frame(maxWidth: 610)
-                .padding(.horizontal, compact ? 20 : 28)
-                .padding(.top, verticalPadding)
-                .padding(.bottom, verticalPadding)
+                .padding(.horizontal, metrics.compact ? 20 : 28)
+                .padding(.top, metrics.verticalPadding)
+                .padding(.bottom, metrics.verticalPadding)
 
                 if let alert = timer.alertText {
                     VStack {
@@ -618,7 +644,7 @@ private struct TimerView: View {
                             .padding(.vertical, 10)
                             .background(accent, in: Capsule())
                             .shadow(color: accent.opacity(0.4), radius: 16)
-                            .padding(.bottom, compact ? 74 : 84)
+                            .padding(.bottom, metrics.compact ? 74 : 84)
                     }
                     .allowsHitTesting(false)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -627,7 +653,7 @@ private struct TimerView: View {
                     undoToast(label: label, borderless: false)
                         .frame(maxWidth: .infinity, maxHeight: .infinity,
                                alignment: .bottom)
-                        .padding(.bottom, compact ? 12 : 18)
+                        .padding(.bottom, metrics.compact ? 12 : 18)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -648,32 +674,45 @@ private struct TimerView: View {
                            alignment: .bottom)
                     .padding(.bottom, geometry.size.height * 0.09)
                     .allowsHitTesting(false)
-                cubeScene
-                    .padding(geometry.size.width * 0.035)
-                VStack(alignment: .leading, spacing: 4) {
-                    if timer.isComplete || !displayFaceReadable {
-                        borderlessReadout(size: geometry.size.width)
-                            .transition(.opacity)
-                    }
-                    HStack(spacing: 4) {
-                        if timer.flowEnabled {
-                            floatingBadge(timer.phase.displayLabel, size: geometry.size.width)
+                if timer.displayStyle == .cube {
+                    cubeScene
+                        .padding(geometry.size.width * 0.035)
+                    VStack(alignment: .leading, spacing: 4) {
+                        if timer.isComplete || !displayFaceReadable {
+                            borderlessReadout(size: geometry.size.width)
+                                .transition(.opacity)
                         }
-                        if timer.pomodoroModeEnabled {
-                            floatingBadge(timer.focusProgressLabel, size: geometry.size.width)
-                                .accessibilityLabel("Focus progress \(timer.focusProgressLabel)")
+                        HStack(spacing: 4) {
+                            if timer.flowEnabled {
+                                floatingBadge(timer.phase.displayLabel, size: geometry.size.width)
+                            }
+                            if timer.pomodoroModeEnabled {
+                                floatingBadge(timer.focusProgressLabel, size: geometry.size.width)
+                                    .accessibilityLabel("Focus progress \(timer.focusProgressLabel)")
+                            }
+                        }
+                        if let pending = timer.pendingFlowEnabled {
+                            floatingBadge("POMO \(pending ? "ON" : "OFF") LATER",
+                                          size: geometry.size.width)
+                                .help(timer.pendingModeDescription ?? "")
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
                         }
                     }
-                    if let pending = timer.pendingFlowEnabled {
-                        floatingBadge("POMO \(pending ? "ON" : "OFF") LATER",
-                                      size: geometry.size.width)
-                            .help(timer.pendingModeDescription ?? "")
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(8)
+                } else {
+                    Button(action: timer.startOrPause) {
+                        digitalPanel(compact: true)
+                            .padding(12)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(countdownActionName) countdown")
+                    .accessibilityValue(timer.accessibilityValue)
+                    .help("Click to \(countdownActionName.lowercased()) timer")
+                    .contextMenu { digitalFloatingContextMenu }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(8)
                 Button(action: timer.startOrPause) {
                     Image(systemName: timer.isRunning ? "pause.fill" : "play.fill")
                         .font(.system(size: 12, weight: .bold))
@@ -717,7 +756,7 @@ private struct TimerView: View {
                 }
                 if showBorderlessHint && timer.alertText == nil &&
                     timer.undoPresetLabel == nil && !showingSettings {
-                    Text("Click timer: start or pause · Drag: rotate\nControl-drag to move · Corner grip to resize\nRight-click for timer controls")
+                    Text(floatingHintText)
                         .font(.system(size: min(11, max(9, geometry.size.width * 0.03)),
                                       weight: .medium, design: .rounded))
                         .foregroundStyle(colors.text)
@@ -762,6 +801,51 @@ private struct TimerView: View {
             .background(colors.panel.opacity(0.92), in: Capsule())
             .allowsHitTesting(false)
             .accessibilityHidden(true)
+    }
+
+    private func digitalPanel(compact: Bool) -> some View {
+        DigitalTimerPanel(timeLabel: timer.timeLabel,
+                          phaseLabel: digitalPhaseLabel,
+                          statusLabel: digitalStatusLabel,
+                          focusProgress: digitalFocusProgress,
+                          sessionNotice: compact ? timer.pendingModeDescription : nil,
+                          progress: timer.progress,
+                          accent: accent,
+                          colors: colors,
+                          compact: compact)
+    }
+
+    @ViewBuilder
+    private var digitalFloatingContextMenu: some View {
+        Button("Cube Timer") { timer.displayStyle = .cube }
+        Button("Digital Timer") { timer.displayStyle = .digital }
+        Divider()
+        Menu("Start Preset") {
+            ForEach(TimerModel.presetNames.indices, id: \.self) { index in
+                Button("Start \(TimerModel.presetNames[index])") {
+                    timer.selectAndStartPreset(index)
+                }
+            }
+        }
+        if let next = timer.nextPhaseName {
+            Button("Start \(next)") { timer.startNextPhase() }
+        } else {
+            Button(countdownActionName) { timer.startOrPause() }
+        }
+        Button("Reset Timer") { timer.reset() }
+        if timer.hasSuspendedPomodoro {
+            Button("Resume Pomodoro") { timer.resumePomodoro() }
+        }
+        if timer.canSkipBreak {
+            Button(timer.skipBreakName) { timer.skipBreak() }
+        }
+        Divider()
+        Button("Settings…") { showingSettings = true }
+        Button(timer.alwaysOnTop ? "Turn Off Always on Top" : "Always on Top") {
+            timer.alwaysOnTop.toggle()
+        }
+        Button("Standard Window") { timer.setBorderlessWindow(false) }
+        Button("Floating Digital Timer Help") { showFloatingHelp() }
     }
 
     private func showFloatingHelp() {
@@ -945,11 +1029,11 @@ private struct TimerView: View {
 
     private var header: some View {
         HStack(spacing: 9) {
-            Image(systemName: "cube.fill")
+            Image(systemName: timer.displayStyle == .cube ? "cube.fill" : "timer")
                 .font(.system(size: 19, weight: .light))
                 .foregroundStyle(accent)
             VStack(alignment: .leading, spacing: 1) {
-                Text("CUBE")
+                Text(timer.displayStyle == .cube ? "CUBE" : "DIGITAL")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .tracking(3)
                 Text("TIMER")
@@ -957,6 +1041,15 @@ private struct TimerView: View {
                     .tracking(3.5)
                     .foregroundStyle(colors.secondary)
             }
+            Picker("Timer design", selection: $timer.displayStyle) {
+                ForEach(TimerDisplayStyle.allCases) { style in
+                    Text(style.title).tag(style)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 126)
+            .accessibilityLabel("Timer design")
             Spacer()
             Button { timer.alwaysOnTop.toggle() } label: {
                 Image(systemName: timer.alwaysOnTop ? "pin.fill" : "pin")
@@ -988,10 +1081,12 @@ private struct TimerView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Spacer(minLength: 4)
-            Text(timer.timeLabel)
-                .foregroundStyle(colors.text)
-                .monospacedDigit()
-                .accessibilityLabel("Time remaining \(timer.timeLabel)")
+            if timer.displayStyle == .cube {
+                Text(timer.timeLabel)
+                    .foregroundStyle(colors.text)
+                    .monospacedDigit()
+                    .accessibilityLabel("Time remaining \(timer.timeLabel)")
+            }
             if !displayFaceReadable {
                 returnToTimerFaceButton
             }
@@ -1054,6 +1149,7 @@ private struct TimerView: View {
                       longBreakDue: timer.longBreakDue,
                       pomodoroSuspended: timer.hasSuspendedPomodoro,
                       displayAction: countdownActionName,
+                      displayStyle: timer.displayStyle,
                       onDisplayClick: { timer.startOrPause() },
                       onOpenSettings: { showingSettings = true },
                       onShowFloatingHelp: showFloatingHelp,
@@ -1062,6 +1158,7 @@ private struct TimerView: View {
                       },
                       onToggleAlwaysOnTop: { timer.alwaysOnTop.toggle() },
                       onReset: { timer.reset() },
+                      onSelectDisplayStyle: { timer.displayStyle = $0 },
                       focusMarks: timer.pomodoroModeEnabled
                           ? CubeFocusProgress(completed: timer.focusesInCycle,
                                               target: timer.cycleTarget) : nil,
@@ -1178,7 +1275,9 @@ private struct TimerView: View {
 
     private var footer: some View {
         HStack {
-            Text("DRAG TO ORBIT  ·  CLICK A FACE")
+            Text(timer.displayStyle == .cube
+                 ? "DRAG TO ORBIT  ·  CLICK A FACE"
+                 : "SELECT A PRESET  ·  SPACE TO START")
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Spacer()

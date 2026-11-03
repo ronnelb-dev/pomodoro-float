@@ -97,10 +97,25 @@ enum DurationEditAction {
     case restartThisPhase
 }
 
+enum TimerDisplayStyle: String, CaseIterable, Identifiable {
+    case cube
+    case digital
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .cube: "Cube"
+        case .digital: "Digital"
+        }
+    }
+}
+
 @MainActor
 final class TimerModel: ObservableObject {
     static let presetNames = ["5 MIN", "10 MIN", "25 MIN", "50 MIN", "60 MIN"]
     static let defaultDurations = [300, 600, 1500, 3000, 3600]
+    static let displayStyleKey = "timerDisplayStyle"
     static func spokenPresetName(_ index: Int) -> String {
         "\(defaultDurations[index] / 60)-minute preset"
     }
@@ -120,6 +135,9 @@ final class TimerModel: ObservableObject {
             preferences.autoStartNextPhase = autoStartNextPhase
             coordinator.autoStartNextPhase = autoStartNextPhase
         }
+    }
+    @Published var displayStyle: TimerDisplayStyle {
+        didSet { defaults.set(displayStyle.rawValue, forKey: Self.displayStyleKey) }
     }
     @Published private(set) var sessionSnapshot: TimerSessionSnapshot
     @Published private(set) var preferences: TimerSessionPreferences
@@ -177,6 +195,7 @@ final class TimerModel: ObservableObject {
     }
 
     private let coordinator: TimerSessionCoordinator
+    private let defaults: UserDefaults
     private let timeSource: TimerTimeSource
     private var observation: AnyCancellable?
 
@@ -190,6 +209,7 @@ final class TimerModel: ObservableObject {
          },
          accessibilityAnnouncer: TimerAccessibilityAnnouncementClient? = nil) {
         self.timeSource = timeSource
+        self.defaults = defaults
         coordinator = TimerSessionCoordinator(
             defaults: defaults, notificationsEnabled: notificationsEnabled, now: now,
             notificationClient: notificationClient, soundClient: soundClient,
@@ -201,6 +221,7 @@ final class TimerModel: ObservableObject {
         muted = coordinator.muted
         volume = coordinator.volume
         autoStartNextPhase = coordinator.autoStartNextPhase
+        displayStyle = TimerDisplayStyle(rawValue: defaults.string(forKey: Self.displayStyleKey) ?? "") ?? .cube
         preferences = TimerSessionPreferences(presetSeconds: coordinator.presetSeconds,
                                               longBreakSeconds: coordinator.longBreakSeconds,
                                               requestedCycleTarget: coordinator.requestedCycleTarget,
