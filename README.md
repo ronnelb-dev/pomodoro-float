@@ -2,7 +2,15 @@
 
 Pomodoro Float is a native macOS focus timer with two displays: a rotatable 3D cube and a classic seven-segment digital timer. Use it in a standard window or as a compact floating timer beside your work.
 
-![Standard window showing the rotatable Pomodoro Float cube and its countdown](assets/screenshots/pomodoro-float-cube.jpg)
+## Screenshots
+
+| Cube · Charcoal | Cube · Light |
+| --- | --- |
+| ![Charcoal Pomodoro Float cube showing a 25-minute countdown](assets/screenshots/pomodoro-float-cube-charcoal.png) | ![White Pomodoro Float cube showing a 25-minute countdown](assets/screenshots/pomodoro-float-cube-light.png) |
+
+| Cube · Blue | Digital |
+| --- | --- |
+| ![Blue Pomodoro Float cube showing a 25-minute countdown](assets/screenshots/pomodoro-float-cube-blue.png) | ![Pomodoro Float seven-segment digital timer showing 05:00 ready](assets/screenshots/pomodoro-float-digital.png) |
 
 ## Features
 
