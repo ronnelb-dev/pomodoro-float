@@ -68,6 +68,11 @@ struct CubeTimerApp: App {
 private struct WindowConfigurator: NSViewRepresentable {
     let alwaysOnTop: Bool
     let borderless: Bool
+    private struct FrameSnapshot {
+        let frame: NSRect
+        let borderless: Bool
+    }
+
     final class Coordinator: NSObject {
         weak var configuredWindow: NSWindow?
         var observers: [NSObjectProtocol] = []
@@ -76,6 +81,17 @@ private struct WindowConfigurator: NSViewRepresentable {
         var standardStyleMask: NSWindow.StyleMask?
         private var frameBeforeZoom: NSRect?
         private var zoomedFrame: NSRect?
+        private lazy var frameSaveScheduler = WindowFrameSaveScheduler<FrameSnapshot> { snapshot in
+            WindowConfigurator.saveFrame(snapshot.frame, borderless: snapshot.borderless)
+        }
+
+        func scheduleFrameSave(_ frame: NSRect, borderless: Bool) {
+            frameSaveScheduler.schedule(FrameSnapshot(frame: frame, borderless: borderless))
+        }
+
+        func flushFrameSave() {
+            frameSaveScheduler.flush()
+        }
 
         @objc func toggleZoom(_ sender: Any?) {
             guard let window = configuredWindow,
@@ -113,6 +129,7 @@ private struct WindowConfigurator: NSViewRepresentable {
         DispatchQueue.main.async { [coordinator] in
             guard let window = view.window else { return }
             if coordinator.configuredWindow !== window {
+                coordinator.flushFrameSave()
                 coordinator.observers.forEach(NotificationCenter.default.removeObserver)
                 coordinator.observers.removeAll()
                 coordinator.configuredWindow = window
@@ -128,19 +145,30 @@ private struct WindowConfigurator: NSViewRepresentable {
                         let frame = window.frame
                         guard mode ? abs(frame.width - frame.height) < 2
                                    : (frame.width >= 350 && frame.height >= 490) else { return }
-                        Self.saveFrame(window, borderless: mode)
+                        if mode {
+                            Self.saveFrame(window, borderless: true)
+                        } else {
+                            coordinator.scheduleFrameSave(frame, borderless: false)
+                        }
                     })
                 }
+                coordinator.observers.append(NotificationCenter.default.addObserver(
+                    forName: NSWindow.willCloseNotification, object: window, queue: .main
+                ) { [weak coordinator] _ in
+                    coordinator?.flushFrameSave()
+                })
                 coordinator.observers.append(NotificationCenter.default.addObserver(
                     forName: .cubeTimerWillChangeWindowMode, object: nil, queue: nil
                 ) { [weak window, weak coordinator] _ in
                     guard let window, let coordinator,
                           let mode = coordinator.appliedBorderless else { return }
+                    coordinator.flushFrameSave()
                     coordinator.isSwitchingMode = true
                     Self.saveFrame(window, borderless: mode)
                 })
             }
             if coordinator.appliedBorderless != borderless {
+                coordinator.flushFrameSave()
                 coordinator.isSwitchingMode = true
                 coordinator.resetZoom()
                 configureChrome(window, borderless: borderless,
@@ -180,7 +208,11 @@ private struct WindowConfigurator: NSViewRepresentable {
     }
 
     fileprivate static func saveFrame(_ window: NSWindow, borderless: Bool) {
-        UserDefaults.standard.set(NSStringFromRect(window.frame),
+        saveFrame(window.frame, borderless: borderless)
+    }
+
+    fileprivate static func saveFrame(_ frame: NSRect, borderless: Bool) {
+        UserDefaults.standard.set(NSStringFromRect(frame),
                                   forKey: frameKey(borderless: borderless))
     }
 
@@ -193,7 +225,14 @@ private struct WindowConfigurator: NSViewRepresentable {
         window.styleMask = borderless ? [.borderless, .resizable]
                                       : (standardStyleMask ?? [.titled, .closable, .miniaturizable])
                                           .union(.resizable)
-        window.aspectRatio = borderless ? NSSize(width: 1, height: 1) : .zero
+        if borderless {
+            window.aspectRatio = NSSize(width: 1, height: 1)
+        } else {
+            // AppKit 27 can produce a NaN frame during native edge tiling if the
+            // aspect ratio is cleared with .zero. A 1×1 resize increment clears
+            // the previous ratio and leaves standard resizing unconstrained.
+            window.resizeIncrements = NSSize(width: 1, height: 1)
+        }
         window.minSize = borderless
             ? NSSize(width: BorderlessWindowPosition.minimumSide,
                      height: BorderlessWindowPosition.minimumSide)
