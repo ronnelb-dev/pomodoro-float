@@ -131,6 +131,7 @@ struct CubeSceneView: NSViewRepresentable {
     let displayAction: String
     let onDisplayClick: () -> Void
     let onOpenSettings: () -> Void
+    let onShowFloatingHelp: () -> Void
     let onToggleBorderless: () -> Void
     let onToggleAlwaysOnTop: () -> Void
     let onReset: () -> Void
@@ -188,6 +189,7 @@ struct CubeSceneView: NSViewRepresentable {
         }
         view.displayClickHandler = interactive ? onDisplayClick : nil
         view.openSettingsHandler = interactive ? onOpenSettings : nil
+        view.showFloatingHelpHandler = interactive ? onShowFloatingHelp : nil
         view.toggleBorderlessHandler = interactive ? onToggleBorderless : nil
         view.toggleAlwaysOnTopHandler = interactive ? onToggleAlwaysOnTop : nil
         view.resetHandler = interactive ? onReset : nil
@@ -567,6 +569,7 @@ final class CubeSCNView: SCNView {
     var displayClickHandler: (() -> Void)?
     fileprivate var hoverHandler: ((CubeHoverTarget?) -> Void)?
     var openSettingsHandler: (() -> Void)?
+    var showFloatingHelpHandler: (() -> Void)?
     var toggleBorderlessHandler: (() -> Void)?
     var toggleAlwaysOnTopHandler: (() -> Void)?
     var resetHandler: (() -> Void)?
@@ -805,6 +808,11 @@ final class CubeSCNView: SCNView {
                                   keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
+        let help = NSMenuItem(title: "Floating Cube Help", action: #selector(showFloatingHelp),
+                              keyEquivalent: "")
+        help.target = self
+        menu.addItem(help)
+        menu.addItem(.separator())
         let mode = NSMenuItem(title: "Borderless Window", action: #selector(toggleBorderless),
                               keyEquivalent: "")
         mode.target = self
@@ -847,6 +855,7 @@ final class CubeSCNView: SCNView {
     }
 
     @objc private func openSettings() { openSettingsHandler?() }
+    @objc private func showFloatingHelp() { showFloatingHelpHandler?() }
     @objc private func toggleBorderless() { toggleBorderlessHandler?() }
     @objc private func toggleAlwaysOnTop() { toggleAlwaysOnTopHandler?() }
     @objc private func resetTimer() { resetHandler?() }

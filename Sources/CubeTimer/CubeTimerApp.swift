@@ -537,6 +537,8 @@ private struct TimerView: View {
     @State private var activeWindow: NSWindow?
     @State private var displayFaceReadable = true
     @State private var showBorderlessHint = false
+    @State private var isHoveringFloatingAction = false
+    @AppStorage("hasSeenFloatingCubeHint") private var hasSeenFloatingCubeHint = false
 
     private var colors: UIColors { UIColors(appearance.value) }
     private var accent: Color { appearance.value.accent.swiftUIColor }
@@ -568,9 +570,8 @@ private struct TimerView: View {
                 showBorderlessHint = false
                 return
             }
-            showBorderlessHint = true
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            if !Task.isCancelled { showBorderlessHint = false }
+            guard !hasSeenFloatingCubeHint else { return }
+            showFloatingHelp()
         }
     }
 
@@ -653,25 +654,19 @@ private struct TimerView: View {
                     if timer.isComplete || !displayFaceReadable {
                         borderlessReadout(size: geometry.size.width)
                             .transition(.opacity)
-                    } else if timer.flowEnabled {
-                        Text(timer.phase.displayLabel)
-                            .font(.system(size: min(12, max(9, geometry.size.width * 0.032)),
-                                          weight: .bold, design: .rounded))
-                            .foregroundStyle(colors.text)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(colors.panel.opacity(0.92), in: Capsule())
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                            .transition(.opacity)
+                    }
+                    HStack(spacing: 4) {
+                        if timer.flowEnabled {
+                            floatingBadge(timer.phase.displayLabel, size: geometry.size.width)
+                        }
+                        if timer.pomodoroModeEnabled {
+                            floatingBadge(timer.focusProgressLabel, size: geometry.size.width)
+                                .accessibilityLabel("Focus progress \(timer.focusProgressLabel)")
+                        }
                     }
                     if let pending = timer.pendingFlowEnabled {
-                        Text("POMO \(pending ? "ON" : "OFF") LATER")
-                            .font(.system(size: 8, weight: .semibold, design: .rounded))
-                            .foregroundStyle(colors.text)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 5)
-                            .background(colors.panel.opacity(0.92), in: Capsule())
+                        floatingBadge("POMO \(pending ? "ON" : "OFF") LATER",
+                                      size: geometry.size.width)
                             .help(timer.pendingModeDescription ?? "")
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
@@ -679,53 +674,23 @@ private struct TimerView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(8)
-                if timer.nextPhaseName != nil || timer.canSkipBreak {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        if let next = timer.nextPhaseName {
-                            Button("Start \(next)") { timer.startNextPhase() }
-                                .font(.system(size: min(10, max(8, geometry.size.width * 0.03)),
-                                              weight: .semibold, design: .rounded))
-                                .foregroundStyle(accent)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 5)
-                                .background(colors.panel.opacity(0.94), in: Capsule())
-                                .buttonStyle(.plain)
-                                .help("Start the next Pomodoro phase")
-                                .accessibilityHidden(true)
-                        }
-                        if timer.canSkipBreak {
-                            Button(timer.skipBreakName) { timer.skipBreak() }
-                                .font(.system(size: min(10, max(8, geometry.size.width * 0.03)),
-                                              weight: .semibold, design: .rounded))
-                                .foregroundStyle(accent)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 5)
-                                .background(colors.panel.opacity(0.94), in: Capsule())
-                                .buttonStyle(.plain)
-                                .help("End the break and prepare Focus (Command-Shift-K)")
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity,
-                           alignment: .topTrailing)
-                    .padding(.top, (timer.isComplete || !displayFaceReadable)
-                             ? (geometry.size.width < 320 ? 62 : 40) : 8)
-                    .padding(.trailing, 8)
-                } else if timer.hasSuspendedPomodoro {
-                    Button("Resume Pomodoro") { timer.resumePomodoro() }
-                        .font(.system(size: min(10, max(8, geometry.size.width * 0.03)),
-                                      weight: .semibold, design: .rounded))
-                        .foregroundStyle(accent)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 5)
-                        .background(colors.panel.opacity(0.94), in: Capsule())
-                        .buttonStyle(.plain)
-                        .help("Resume the paused Pomodoro phase (Command-Shift-P)")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity,
-                               alignment: .topTrailing)
-                        .padding(8)
-                        .accessibilityHidden(true)
+                Button(action: timer.startOrPause) {
+                    Image(systemName: timer.isRunning ? "pause.fill" : "play.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(accentInk)
+                        .frame(width: 30, height: 30)
+                        .background(accent, in: Circle())
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .opacity(isHoveringFloatingAction ? 1 : 0)
+                .allowsHitTesting(isHoveringFloatingAction)
+                .accessibilityLabel("\(countdownActionName) countdown")
+                .accessibilityValue(timer.accessibilityValue)
+                .help("\(countdownActionName) countdown")
+                .frame(maxWidth: .infinity, maxHeight: .infinity,
+                       alignment: .topTrailing)
+                .padding(8)
                 if let alert = timer.alertText {
                     Text(alert)
                         .font(.system(size: min(12, max(9, geometry.size.width * 0.035)),
@@ -752,12 +717,12 @@ private struct TimerView: View {
                 }
                 if showBorderlessHint && timer.alertText == nil &&
                     timer.undoPresetLabel == nil && !showingSettings {
-                    Text("Control-drag cube to move\nControl-drag corner to resize")
+                    Text("Click timer: start or pause · Drag: rotate\nControl-drag to move · Corner grip to resize\nRight-click for timer controls")
                         .font(.system(size: min(11, max(9, geometry.size.width * 0.03)),
                                       weight: .medium, design: .rounded))
                         .foregroundStyle(colors.text)
                         .multilineTextAlignment(.center)
-                        .lineLimit(2)
+                        .lineLimit(3)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(colors.panel.opacity(0.90),
@@ -779,11 +744,33 @@ private struct TimerView: View {
             .animation(.easeInOut(duration: 0.18), value: displayFaceReadable)
             .animation(.easeInOut(duration: 0.18), value: showBorderlessHint)
             .animation(.easeInOut(duration: 0.18), value: timer.undoPresetLabel)
+            .onHover { isHoveringFloatingAction = $0 }
         }
         .background(Color.clear)
         .background(WindowReference { window in
             if activeWindow !== window { activeWindow = window }
         })
+    }
+
+    private func floatingBadge(_ label: String, size: CGFloat) -> some View {
+        Text(label)
+            .font(.system(size: min(10, max(8, size * 0.03)),
+                          weight: .bold, design: .rounded))
+            .foregroundStyle(colors.text)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
+            .background(colors.panel.opacity(0.92), in: Capsule())
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private func showFloatingHelp() {
+        hasSeenFloatingCubeHint = true
+        showBorderlessHint = true
+        Task {
+            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            showBorderlessHint = false
+        }
     }
 
     private func borderlessReadout(size: CGFloat) -> some View {
@@ -1069,6 +1056,7 @@ private struct TimerView: View {
                       displayAction: countdownActionName,
                       onDisplayClick: { timer.startOrPause() },
                       onOpenSettings: { showingSettings = true },
+                      onShowFloatingHelp: showFloatingHelp,
                       onToggleBorderless: {
                           timer.setBorderlessWindow(!timer.borderlessWindow)
                       },
@@ -1469,7 +1457,7 @@ private struct SettingsView: View {
                           selectionTick: 0, returnToDisplayTick: 0, borderless: false,
                           alwaysOnTop: timer.alwaysOnTop,
                           replacingActiveSession: false, displayAction: "Start",
-                          onDisplayClick: {}, onOpenSettings: {},
+                          onDisplayClick: {}, onOpenSettings: {}, onShowFloatingHelp: {},
                           onToggleBorderless: {}, onToggleAlwaysOnTop: {},
                           onReset: {},
                           onSelect: { _ in })

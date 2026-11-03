@@ -4,13 +4,40 @@ import XCTest
 @testable import CubeTimer
 
 @MainActor
-final class TimerModelTests: XCTestCase {
+final class TimerSessionCoordinatorTests: XCTestCase {
+    func testCommandReturnsSnapshotAndLifecycleEvents() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ManualTimerTimeSource()
+        let coordinator = TimerSessionCoordinator(defaults: defaults,
+                                                   notificationsEnabled: false,
+                                                   now: source.wallNow,
+                                                   timeSource: source)
+        let commandStart = 5_000.0
+        let start = coordinator.handle(TimerSessionCommand(action: .start,
+                                                           preferences: sessionPreferences(),
+                                                           time: TimerSessionTime(wallNow: source.wallNow,
+                                                                                  continuousNow: commandStart,
+                                                                                  bootSessionID: source.bootSessionID)))
+        XCTAssertTrue(start.snapshot.isRunning)
+        XCTAssertEqual(start.events, [.started])
+
+        source.advance(10)
+        let pause = coordinator.handle(TimerSessionCommand(action: .pause,
+                                                           preferences: sessionPreferences(),
+                                                           time: TimerSessionTime(wallNow: source.wallNow,
+                                                                                  continuousNow: commandStart + 10,
+                                                                                  bootSessionID: source.bootSessionID)))
+        XCTAssertTrue(pause.snapshot.isPaused)
+        XCTAssertEqual(pause.snapshot.remaining, 290, accuracy: 0.01)
+        XCTAssertEqual(pause.events, [.paused])
+    }
     func testClockJumpsDoNotChangeRunningTimeAndRebaseWallDeadline() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, timeSource: source)
         defer { model.reset() }
         model.start()
@@ -33,13 +60,13 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = ManualTimerTimeSource()
-        let first = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let first = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         first.start()
         source.advance(90)
         source.jumpWall(3_600)
         let notifications = RecordingNotifications()
-        let restored = TimerModel(defaults: defaults, now: source.wallNow,
+        let restored = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                   notificationClient: notifications, timeSource: source)
         defer { restored.reset(); first.reset() }
         XCTAssertTrue(restored.isRunning)
@@ -52,12 +79,12 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let firstClock = ManualTimerTimeSource()
-        let first = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let first = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: firstClock.wallNow, timeSource: firstClock)
         first.start()
         let secondClock = ManualTimerTimeSource(wallNow: firstClock.wallNow.addingTimeInterval(60),
                                                 continuousNow: 10, bootSessionID: "boot-B")
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: secondClock.wallNow, timeSource: secondClock)
         defer { restored.reset(); first.reset() }
         XCTAssertEqual(restored.remaining, 240, accuracy: 0.01)
@@ -71,7 +98,7 @@ final class TimerModelTests: XCTestCase {
                                phase: .focus, total: 300,
                                deadline: source.wallNow.addingTimeInterval(180),
                                pausedRemaining: nil), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         XCTAssertEqual(model.remaining, 180, accuracy: 0.01)
@@ -88,7 +115,7 @@ final class TimerModelTests: XCTestCase {
         save(SavedTimerSession(version: 2, state: .paused, selectedPreset: 0,
                                phase: .breakTime, total: 300,
                                deadline: nil, pausedRemaining: 123), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         XCTAssertTrue(model.flowEnabled)
         XCTAssertTrue(model.pomodoroModeEnabled)
@@ -104,7 +131,7 @@ final class TimerModelTests: XCTestCase {
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, timeSource: source)
         defer { model.reset() }
         model.start()
@@ -166,7 +193,7 @@ final class TimerModelTests: XCTestCase {
                     let source = ManualTimerTimeSource()
                     let notifications = RecordingNotifications()
                     let sound = RecordingSound()
-                    let model = TimerModel(defaults: defaults, now: source.wallNow,
+                    let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                            notificationClient: notifications, soundClient: sound,
                                            timeSource: source, appIsActive: { true })
                     defer { model.reset() }
@@ -225,7 +252,7 @@ final class TimerModelTests: XCTestCase {
                     let source = ManualTimerTimeSource()
                     let notifications = RecordingNotifications()
                     let sound = RecordingSound()
-                    let model = TimerModel(defaults: defaults, now: source.wallNow,
+                    let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                            notificationClient: notifications, soundClient: sound,
                                            timeSource: source)
                     defer { model.reset() }
@@ -254,7 +281,7 @@ final class TimerModelTests: XCTestCase {
                     XCTAssertEqual(sound.playCount, 0)
                     XCTAssertNil(model.alertText)
 
-                    let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+                    let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                               now: source.wallNow, timeSource: source)
                     defer { restored.reset() }
                     XCTAssertEqual(restored.total, oldTotal)
@@ -276,7 +303,7 @@ final class TimerModelTests: XCTestCase {
                         let source = ManualTimerTimeSource()
                         let notifications = RecordingNotifications()
                         let sound = RecordingSound()
-                        let model = TimerModel(defaults: defaults, now: source.wallNow,
+                        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                                notificationClient: notifications,
                                                soundClient: sound, timeSource: source)
                         defer { model.reset() }
@@ -327,7 +354,7 @@ final class TimerModelTests: XCTestCase {
                                focusesInCycle: 4, completedFocusTotal: 4), in: defaults)
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, soundClient: sound,
                                timeSource: source)
         defer { model.reset() }
@@ -366,7 +393,7 @@ final class TimerModelTests: XCTestCase {
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, soundClient: sound,
                                timeSource: source)
         defer { model.reset() }
@@ -404,7 +431,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, timeSource: source)
         defer { model.reset() }
         model.start()
@@ -430,7 +457,7 @@ final class TimerModelTests: XCTestCase {
                     let source = ManualTimerTimeSource()
                     let notifications = RecordingNotifications()
                     let sound = RecordingSound()
-                    let model = TimerModel(defaults: defaults, now: source.wallNow,
+                    let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                            notificationClient: notifications, soundClient: sound,
                                            timeSource: source)
                     defer { model.reset() }
@@ -480,7 +507,7 @@ final class TimerModelTests: XCTestCase {
                                deadline: now.addingTimeInterval(900), pausedRemaining: nil),
              in: defaults)
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: now, notificationClient: notifications)
+        let model = TimerSessionCoordinator(defaults: defaults, now: now, notificationClient: notifications)
         XCTAssertTrue(model.isRunning)
         XCTAssertEqual(model.selectedPreset, 2)
         XCTAssertEqual(model.remaining, 900, accuracy: 0.01)
@@ -493,7 +520,7 @@ final class TimerModelTests: XCTestCase {
     func testStartPauseResumeAndResetKeepSavedSessionInSync() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         XCTAssertNil(defaults.data(forKey: SavedTimerSession.key))
 
         model.start()
@@ -504,7 +531,7 @@ final class TimerModelTests: XCTestCase {
         XCTAssertEqual(saved(in: defaults)?.state, .paused)
         XCTAssertEqual(saved(in: defaults)?.pausedRemaining, model.remaining)
 
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         XCTAssertTrue(restored.isPaused)
         XCTAssertEqual(restored.remaining, model.remaining)
         restored.start()
@@ -521,7 +548,7 @@ final class TimerModelTests: XCTestCase {
                                phase: .focus, total: 3_600,
                                deadline: nil, pausedRemaining: 1_234), in: defaults)
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, notificationClient: notifications)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications)
         XCTAssertTrue(model.isPaused)
         XCTAssertEqual(model.selectedPreset, 4)
         XCTAssertEqual(model.total, 3_600)
@@ -539,7 +566,7 @@ final class TimerModelTests: XCTestCase {
                                deadline: now.addingTimeInterval(-20), pausedRemaining: nil),
              in: defaults)
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: now, notificationClient: notifications)
+        let model = TimerSessionCoordinator(defaults: defaults, now: now, notificationClient: notifications)
         XCTAssertTrue(model.isComplete)
         XCTAssertFalse(model.isRunning)
         XCTAssertEqual(model.phase, .focus)
@@ -645,7 +672,7 @@ final class TimerModelTests: XCTestCase {
         XCTAssertEqual(model.total, 300)
         XCTAssertEqual(notifications.pending?.title, "Short Break session complete")
         XCTAssertFalse(defaults.bool(forKey: "autoStartNextPhase"))
-        let reopened = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         XCTAssertFalse(reopened.autoStartNextPhase)
         XCTAssertEqual(reopened.phase, .breakTime)
         XCTAssertTrue(reopened.isRunning)
@@ -693,7 +720,7 @@ final class TimerModelTests: XCTestCase {
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, timeSource: source)
         defer { model.reset() }
         model.setPreset(2, seconds: 1)
@@ -733,7 +760,7 @@ final class TimerModelTests: XCTestCase {
             defer { defaults.removePersistentDomain(forName: suite) }
             defaults.set(true, forKey: "flowEnabled")
             let source = ManualTimerTimeSource()
-            let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+            let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                    now: source.wallNow, timeSource: source)
             model.autoStartNextPhase = false
             model.setPreset(2, seconds: 1)
@@ -771,7 +798,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         model.autoStartNextPhase = false
         model.setPreset(2, seconds: 1)
@@ -807,7 +834,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let first = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let first = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         first.setPreset(2, seconds: 1)
         first.setPreset(0, seconds: 1)
@@ -818,7 +845,7 @@ final class TimerModelTests: XCTestCase {
         first.pause()
         first.setCycleTarget(8)
 
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertEqual(restored.cycleTarget, 4)
         XCTAssertEqual(restored.requestedCycleTarget, 8)
@@ -855,7 +882,7 @@ final class TimerModelTests: XCTestCase {
                                activeFlowEnabled: true, pomodoroModeEnabled: true,
                                focusesInCycle: 0, completedFocusTotal: 4,
                                cycleTarget: 4), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         model.setCycleTarget(2)
         XCTAssertEqual(model.phase, .longBreak)
@@ -883,7 +910,7 @@ final class TimerModelTests: XCTestCase {
                                focusesInCycle: 1, completedFocusTotal: 1,
                                cycleTarget: 4), in: defaults)
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, timeSource: source)
         model.setCycleTarget(2)
         model.selectAndStartPreset(4)
@@ -908,7 +935,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         model.autoStartNextPhase = false
@@ -946,7 +973,7 @@ final class TimerModelTests: XCTestCase {
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, soundClient: sound, timeSource: source)
         defer { model.reset() }
         model.setPreset(2, seconds: 1)
@@ -962,7 +989,7 @@ final class TimerModelTests: XCTestCase {
             activeFlowEnabled: true, pomodoroModeEnabled: true,
             focusesInCycle: 3, completedFocusTotal: 3)
         save(savedSession, in: defaults)
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, soundClient: sound, timeSource: source)
         source.advance(10)
         restored.refresh(afterWake: true)
@@ -987,13 +1014,13 @@ final class TimerModelTests: XCTestCase {
                                activeFlowEnabled: true, pomodoroModeEnabled: true,
                                focusesInCycle: 3, completedFocusTotal: 3), in: defaults)
         source.advance(10)
-        let first = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let first = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         XCTAssertTrue(first.isComplete)
         XCTAssertEqual(first.focusesInCycle, 4)
         XCTAssertEqual(first.completedFocusTotal, 4)
         XCTAssertEqual(saved(in: defaults)?.version, 5)
-        let reopened = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertEqual(reopened.completedFocusTotal, 4)
         XCTAssertEqual(reopened.nextPhaseName, "Long Break")
@@ -1002,7 +1029,7 @@ final class TimerModelTests: XCTestCase {
                                phase: .focus, total: 1_500,
                                deadline: nil, pausedRemaining: nil,
                                activeFlowEnabled: true, pomodoroModeEnabled: true), in: defaults)
-        let migrated = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let migrated = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertEqual(migrated.completedFocusTotal, 0)
         XCTAssertEqual(migrated.focusesInCycle, 0)
@@ -1019,13 +1046,13 @@ final class TimerModelTests: XCTestCase {
                                deadline: nil, pausedRemaining: nil,
                                activeFlowEnabled: true, pomodoroModeEnabled: true,
                                focusesInCycle: 4, completedFocusTotal: 4), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         model.selectAndStartPreset(2)
         XCTAssertTrue(model.hasSuspendedPomodoro)
         XCTAssertFalse(model.flowEnabled)
         XCTAssertEqual(model.focusesInCycle, 4)
-        let reopened = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertTrue(reopened.hasSuspendedPomodoro)
         XCTAssertEqual(reopened.focusesInCycle, 4)
@@ -1053,7 +1080,7 @@ final class TimerModelTests: XCTestCase {
                                continuousDeadline: source.continuousNow + 600,
                                activeFlowEnabled: true, pomodoroModeEnabled: true,
                                focusesInCycle: 0, completedFocusTotal: 4), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         XCTAssertTrue(model.presetBecomesOneOff(0))
@@ -1077,7 +1104,7 @@ final class TimerModelTests: XCTestCase {
                                deadline: nil, pausedRemaining: nil,
                                activeFlowEnabled: true, pomodoroModeEnabled: true,
                                focusesInCycle: 4, completedFocusTotal: 4), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         XCTAssertEqual(model.longBreakSeconds, 900)
@@ -1099,7 +1126,7 @@ final class TimerModelTests: XCTestCase {
         model.setPreset(0, seconds: 4)
         XCTAssertEqual(model.total, 12)
         XCTAssertEqual(model.remaining, 12)
-        let reopened = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertEqual(reopened.longBreakSeconds, 12)
         XCTAssertEqual(reopened.total, 12)
@@ -1118,7 +1145,7 @@ final class TimerModelTests: XCTestCase {
                                continuousDeadline: source.continuousNow + 20,
                                activeFlowEnabled: true, pomodoroModeEnabled: true,
                                focusesInCycle: 3, completedFocusTotal: 9), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         model.selectAndStartPreset(1)
@@ -1146,7 +1173,7 @@ final class TimerModelTests: XCTestCase {
                                continuousDeadline: source.continuousNow + 1,
                                activeFlowEnabled: true, pomodoroModeEnabled: true,
                                focusesInCycle: 3, completedFocusTotal: 3), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         model.selectAndStartPreset(1)
@@ -1169,13 +1196,13 @@ final class TimerModelTests: XCTestCase {
                                deadline: now.addingTimeInterval(-20),
                                pausedRemaining: nil, activeFlowEnabled: true,
                                pomodoroModeEnabled: true), in: defaults)
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: now)
         XCTAssertTrue(model.isComplete)
         XCTAssertEqual(model.completedFocusTotal, 1)
         XCTAssertEqual(model.focusesInCycle, 1)
         XCTAssertEqual(saved(in: defaults)?.version, 5)
-        let reopened = TimerModel(defaults: defaults, notificationsEnabled: false, now: now)
+        let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false, now: now)
         XCTAssertEqual(reopened.completedFocusTotal, 1)
         reopened.reset()
     }
@@ -1210,7 +1237,7 @@ final class TimerModelTests: XCTestCase {
                                deadline: boundary, pausedRemaining: nil), in: defaults)
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: now,
+        let model = TimerSessionCoordinator(defaults: defaults, now: now,
                                notificationClient: notifications, soundClient: sound)
         defer { model.reset() }
 
@@ -1237,7 +1264,7 @@ final class TimerModelTests: XCTestCase {
                                deadline: Date().addingTimeInterval(60), pausedRemaining: nil),
              in: defaults)
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, notificationClient: notifications)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications)
         XCTAssertFalse(model.isRunning)
         XCTAssertFalse(model.isComplete)
         XCTAssertEqual(model.selectedPreset, 2)
@@ -1250,7 +1277,7 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let notifications = RecordingNotifications()
-        _ = TimerModel(defaults: defaults, notificationClient: notifications)
+        _ = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications)
         XCTAssertEqual(notifications.cancelCount, 1)
         XCTAssertTrue(notifications.scheduled.isEmpty)
     }
@@ -1259,7 +1286,7 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, notificationClient: notifications,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications,
                                appIsActive: { true })
         model.start()
         XCTAssertEqual(notifications.pending?.playSound, true)
@@ -1277,7 +1304,7 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let announcer = RecordingAccessibilityAnnouncer()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                appIsActive: { true }, accessibilityAnnouncer: announcer)
         XCTAssertEqual(model.accessibilityValue,
                        "5-minute preset, Ready, 5 minutes remaining")
@@ -1305,7 +1332,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let announcer = RecordingAccessibilityAnnouncer()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                appIsActive: { true }, accessibilityAnnouncer: announcer)
         model.setPreset(2, seconds: 1)
         model.start()
@@ -1323,7 +1350,7 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let announcer = RecordingAccessibilityAnnouncer()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                appIsActive: { false }, accessibilityAnnouncer: announcer)
         model.start()
         model.pause()
@@ -1335,7 +1362,7 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let announcer = RecordingAccessibilityAnnouncer()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                appIsActive: { true }, accessibilityAnnouncer: announcer)
         model.setPreset(0, seconds: 1)
         model.start()
@@ -1347,7 +1374,7 @@ final class TimerModelTests: XCTestCase {
         model.refresh(at: Date().addingTimeInterval(3))
         XCTAssertEqual(announcer.messages.count, count)
 
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   appIsActive: { true }, accessibilityAnnouncer: announcer)
         XCTAssertTrue(restored.isComplete)
         XCTAssertEqual(announcer.messages.count, count)
@@ -1358,7 +1385,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationClient: notifications,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications,
                                soundClient: sound, appIsActive: { true })
         model.setPreset(0, seconds: 1)
         model.start()
@@ -1391,7 +1418,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let presetSound = RecordingPresetSound()
         let completionSound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                soundClient: completionSound, presetSoundClient: presetSound)
         model.volume = 0.42
         // The physical cube has six numbered faces; the 5-minute preset repeats.
@@ -1412,7 +1439,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let presetSound = RecordingPresetSound()
         let completionSound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                soundClient: completionSound, presetSoundClient: presetSound)
         model.selectPreset(1)                 // visible button / Command-Left or Right
         model.selectAndStartPreset(2)         // keyboard / VoiceOver preset action
@@ -1442,7 +1469,7 @@ final class TimerModelTests: XCTestCase {
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, soundClient: sound,
                                timeSource: source, appIsActive: { true })
         model.autoStartNextPhase = false
@@ -1477,7 +1504,7 @@ final class TimerModelTests: XCTestCase {
                                pomodoroModeEnabled: true, focusesInCycle: 0,
                                completedFocusTotal: 4, cycleTarget: 4), in: defaults)
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, soundClient: sound,
                                timeSource: source, appIsActive: { true })
         model.start()
@@ -1496,7 +1523,7 @@ final class TimerModelTests: XCTestCase {
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, soundClient: sound,
                                timeSource: source, appIsActive: { true })
         model.autoStartNextPhase = false
@@ -1521,7 +1548,7 @@ final class TimerModelTests: XCTestCase {
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, soundClient: sound,
                                timeSource: source, appIsActive: { true })
         model.setPreset(0, seconds: 5)
@@ -1545,7 +1572,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationClient: notifications,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications,
                                soundClient: sound, appIsActive: { false })
         model.setPreset(0, seconds: 1)
         model.start()
@@ -1561,7 +1588,7 @@ final class TimerModelTests: XCTestCase {
         let notifications = RecordingNotifications()
         notifications.systemSoundAvailable = false
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationClient: notifications,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications,
                                soundClient: sound, appIsActive: { false })
         model.setPreset(0, seconds: 1)
         model.start()
@@ -1597,13 +1624,13 @@ final class TimerModelTests: XCTestCase {
     }
 
     func testSixtyMinutePresetStartsAndPersistsWithoutChangingExistingPresets() {
-        let suite = "CubeTimerModelTests.\(UUID().uuidString)"
+        let suite = "CubeTimerSessionCoordinatorTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         defaults.set(1_575, forKey: "presetSeconds.2")
 
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         XCTAssertEqual(model.presetSeconds, [300, 600, 1_575, 3_000, 3_600])
         model.selectAndStartPreset(4)
         XCTAssertTrue(model.isRunning)
@@ -1611,7 +1638,7 @@ final class TimerModelTests: XCTestCase {
         XCTAssertEqual(model.remaining, model.total)
 
         model.setPreset(4, seconds: 3_661)
-        let reloaded = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let reloaded = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         XCTAssertEqual(reloaded.selectedPreset, 4)
         XCTAssertEqual(reloaded.presetSeconds, [300, 600, 1_575, 3_000, 3_661])
         model.reset()
@@ -1633,11 +1660,11 @@ final class TimerModelTests: XCTestCase {
         let model = makeModel()
         defer { model.reset() }
 
-        for index in 0..<TimerModel.defaultDurations.count {
+        for index in 0..<TimerSessionCoordinator.defaultDurations.count {
             model.selectAndStartPreset(index)
             XCTAssertEqual(model.selectedPreset, index)
             XCTAssertTrue(model.isRunning)
-            XCTAssertEqual(model.total, TimeInterval(TimerModel.defaultDurations[index]))
+            XCTAssertEqual(model.total, TimeInterval(TimerSessionCoordinator.defaultDurations[index]))
             XCTAssertEqual(model.remaining, model.total)
         }
     }
@@ -1688,7 +1715,7 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, notificationClient: notifications)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications)
         defer { model.reset() }
 
         model.start()
@@ -1729,7 +1756,7 @@ final class TimerModelTests: XCTestCase {
     func testUndoSelectOnlyRestoresRunningTimerAndItsSavedDeadline() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         defer { model.reset() }
         model.start()
         let original = saved(in: defaults)!.deadline!
@@ -1774,7 +1801,7 @@ final class TimerModelTests: XCTestCase {
     func testUndoRepeatedFaceClickRestoresPreviousRunningSession() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         defer { model.reset() }
         model.start()
         let original = saved(in: defaults)!.deadline!
@@ -1788,12 +1815,12 @@ final class TimerModelTests: XCTestCase {
     func testUndoOfferDoesNotSurviveRelaunch() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         model.start()
         model.selectAndStartPreset(1)
         XCTAssertNotNil(model.undoPresetLabel)
 
-        let relaunched = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let relaunched = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         XCTAssertTrue(relaunched.isRunning)
         XCTAssertEqual(relaunched.selectedPreset, 1)
         XCTAssertNil(relaunched.undoPresetLabel)
@@ -1844,7 +1871,7 @@ final class TimerModelTests: XCTestCase {
              in: defaults)
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: now,
+        let model = TimerSessionCoordinator(defaults: defaults, now: now,
                                notificationClient: notifications, soundClient: sound)
         defer { model.reset() }
 
@@ -1871,7 +1898,7 @@ final class TimerModelTests: XCTestCase {
              in: defaults)
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: now,
+        let model = TimerSessionCoordinator(defaults: defaults, now: now,
                                notificationClient: notifications, soundClient: sound)
         defer { model.reset() }
 
@@ -1909,7 +1936,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, timeSource: source)
         defer { model.reset() }
         model.start()
@@ -1940,14 +1967,14 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         model.start()
         source.advance(11)
         model.pause()
         let paused = model.remaining
         model.setFlowEnabled(false)
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertTrue(restored.isPaused)
         XCTAssertEqual(restored.remaining, paused, accuracy: 0.01)
@@ -1963,7 +1990,7 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         model.start()
@@ -1984,7 +2011,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         model.start()
@@ -2006,7 +2033,7 @@ final class TimerModelTests: XCTestCase {
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
         let notifications = RecordingNotifications()
-        let model = TimerModel(defaults: defaults, now: source.wallNow,
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                notificationClient: notifications, timeSource: source)
         model.start()
         source.advance(37)
@@ -2017,7 +2044,7 @@ final class TimerModelTests: XCTestCase {
         XCTAssertEqual(model.suspendedPomodoro?.remaining ?? -1, 1_463, accuracy: 0.01)
         XCTAssertEqual(notifications.pending?.title, "Timer complete")
         source.advance(90)
-        let restored = TimerModel(defaults: defaults, now: source.wallNow,
+        let restored = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
                                   notificationClient: notifications, timeSource: source)
         XCTAssertTrue(restored.hasSuspendedPomodoro)
         XCTAssertEqual(restored.suspendedPomodoro?.remaining ?? -1, 1_463, accuracy: 0.01)
@@ -2035,7 +2062,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         model.selectPreset(0)
         model.start()
@@ -2058,14 +2085,14 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         model.start()
         source.advance(12)
         model.selectPreset(3)
         XCTAssertFalse(model.isRunning)
         XCTAssertEqual(saved(in: defaults)?.state, .ready)
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertTrue(restored.hasSuspendedPomodoro)
         XCTAssertTrue(restored.resumePomodoro())
@@ -2078,7 +2105,7 @@ final class TimerModelTests: XCTestCase {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         defer { model.reset() }
         model.start()
         model.selectAndStartPreset(1)
@@ -2094,7 +2121,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let source = ManualTimerTimeSource()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, soundClient: sound,
                                timeSource: source)
         defer { model.reset() }
@@ -2113,7 +2140,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         model.start()
@@ -2133,7 +2160,7 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         model.start()
@@ -2154,13 +2181,13 @@ final class TimerModelTests: XCTestCase {
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         model.start()
         model.selectAndStartPreset(1)
         model.setFlowEnabled(false)
         source.advance(601)
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, soundClient: sound, timeSource: source)
         XCTAssertFalse(restored.pomodoroModeEnabled)
         XCTAssertFalse(restored.hasSuspendedPomodoro)
@@ -2180,14 +2207,14 @@ final class TimerModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
         let source = ManualTimerTimeSource()
-        let model = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                now: source.wallNow, timeSource: source)
         model.start()
         model.selectAndStartPreset(1)
         model.setFlowEnabled(false)
         source.advance(601)
         var active = false
-        let restored = TimerModel(defaults: defaults, notificationsEnabled: false,
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source,
                                   appIsActive: { active })
         source.advance(30)
@@ -2202,14 +2229,20 @@ final class TimerModelTests: XCTestCase {
         model.reset()
     }
 
-    private func makeModel() -> TimerModel {
+    private func makeModel() -> TimerSessionCoordinator {
         let (defaults, suite) = isolatedDefaults()
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
-        return TimerModel(defaults: defaults, notificationsEnabled: false)
+        return TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+    }
+
+    private func sessionPreferences() -> TimerSessionPreferences {
+        TimerSessionPreferences(presetSeconds: TimerSessionCoordinator.defaultDurations,
+                                longBreakSeconds: 900, requestedCycleTarget: 4,
+                                autoStartNextPhase: true)
     }
 
     private func runningPomodoro(focusPreset: Int = 1_500, breakPreset: Int = 300)
-        -> (TimerModel, UserDefaults, Date, RecordingNotifications, RecordingSound) {
+        -> (TimerSessionCoordinator, UserDefaults, Date, RecordingNotifications, RecordingSound) {
         let (defaults, suite) = isolatedDefaults()
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
@@ -2222,14 +2255,14 @@ final class TimerModelTests: XCTestCase {
                                deadline: boundary, pausedRemaining: nil), in: defaults)
         let notifications = RecordingNotifications()
         let sound = RecordingSound()
-        let model = TimerModel(defaults: defaults, now: now,
+        let model = TimerSessionCoordinator(defaults: defaults, now: now,
                                notificationClient: notifications, soundClient: sound,
                                appIsActive: { true })
         return (model, defaults, boundary, notifications, sound)
     }
 
     private func isolatedDefaults() -> (UserDefaults, String) {
-        let suite = "CubeTimerModelTests.\(UUID().uuidString)"
+        let suite = "CubeTimerSessionCoordinatorTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         return (defaults, suite)
