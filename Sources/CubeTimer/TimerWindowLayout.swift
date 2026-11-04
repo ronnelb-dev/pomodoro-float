@@ -64,3 +64,46 @@ enum StandardWindowPosition {
         return frame
     }
 }
+
+struct BorderlessWindowMoveGesture {
+    private static let resizeGripHitSize: CGFloat = 48
+    private var startPointer: NSPoint?
+    private var startOrigin: NSPoint?
+    private(set) var hasMoved = false
+
+    var isTracking: Bool { startPointer != nil }
+
+    static func shouldBegin(controlInEvent: Bool, controlCurrentlyHeld: Bool) -> Bool {
+        controlInEvent || controlCurrentlyHeld
+    }
+
+    mutating func begin(pointer: NSPoint, frame: NSRect, moveIntent: Bool) {
+        reset()
+        guard moveIntent else { return }
+        startPointer = pointer
+        startOrigin = frame.origin
+    }
+
+    static func hitsResizeGrip(_ point: NSPoint, contentBounds: NSRect) -> Bool {
+        point.x >= contentBounds.maxX - resizeGripHitSize &&
+            point.y <= contentBounds.minY + resizeGripHitSize
+    }
+
+    mutating func proposedOrigin(pointer: NSPoint, size: NSSize,
+                                 visibleFrames: [NSRect]) -> NSPoint? {
+        guard let startPointer, let startOrigin else { return nil }
+        let dx = pointer.x - startPointer.x
+        let dy = pointer.y - startPointer.y
+        guard hasMoved || hypot(dx, dy) > 5 else { return nil }
+        hasMoved = true
+        return BorderlessWindowPosition.clampedOrigin(
+            NSPoint(x: startOrigin.x + dx, y: startOrigin.y + dy),
+            size: size, visibleFrames: visibleFrames)
+    }
+
+    mutating func reset() {
+        startPointer = nil
+        startOrigin = nil
+        hasMoved = false
+    }
+}

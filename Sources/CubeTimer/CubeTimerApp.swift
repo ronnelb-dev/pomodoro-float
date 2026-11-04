@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct CubeTimerApp: App {
+    @NSApplicationDelegateAdaptor(TimerApplicationDelegate.self) private var appDelegate
     @StateObject private var timer = TimerModel()
     @StateObject private var appearance = AppearanceModel()
     @State private var showingSettings = false
@@ -133,6 +134,7 @@ private struct WindowConfigurator: NSViewRepresentable {
                 coordinator.observers.forEach(NotificationCenter.default.removeObserver)
                 coordinator.observers.removeAll()
                 coordinator.configuredWindow = window
+                window.identifier = TimerApplicationDelegate.timerWindowIdentifier
                 coordinator.appliedBorderless = nil
                 coordinator.standardStyleMask = window.styleMask
                 for event in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
@@ -570,6 +572,123 @@ struct UIColors {
     }
 }
 
+private struct BorderlessWindowMoveMonitor: NSViewRepresentable {
+    let window: NSWindow?
+    let enabled: Bool
+
+    func makeNSView(context: Context) -> MonitorView {
+        let view = MonitorView()
+        view.moveWindow = window
+        view.setEnabled(enabled)
+        return view
+    }
+
+    func updateNSView(_ view: MonitorView, context: Context) {
+        view.moveWindow = window
+        view.setEnabled(enabled)
+        view.ensureEventMonitor()
+    }
+
+    static func dismantleNSView(_ view: MonitorView, coordinator: ()) {
+        view.stopEventMonitor()
+    }
+
+    final class MonitorView: NSView {
+        weak var moveWindow: NSWindow?
+        private weak var monitoredWindow: NSWindow?
+        private var eventMonitor: Any?
+        private var gesture = BorderlessWindowMoveGesture()
+        private var isEnabled = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            ensureEventMonitor()
+        }
+
+        func setEnabled(_ enabled: Bool) {
+            guard isEnabled != enabled else { return }
+            isEnabled = enabled
+            if enabled {
+                ensureEventMonitor()
+            } else {
+                stopEventMonitor()
+            }
+        }
+
+        func ensureEventMonitor() {
+            guard isEnabled, let window = moveWindow ?? self.window else {
+                stopEventMonitor()
+                return
+            }
+            guard eventMonitor == nil || monitoredWindow !== window else { return }
+            stopEventMonitor()
+            moveWindow = window
+            monitoredWindow = window
+            let events: NSEvent.EventTypeMask = [
+                .leftMouseDown, .leftMouseDragged, .leftMouseUp,
+                .rightMouseDown, .rightMouseDragged, .rightMouseUp
+            ]
+            eventMonitor = NSEvent.addLocalMonitorForEvents(matching: events) {
+                [weak self, weak window] event in
+                guard let self, let window, self.isEnabled,
+                      NSApp.isActive, window.isVisible, window.attachedSheet == nil else {
+                    return event
+                }
+                let isMouseDown = event.type == .leftMouseDown ||
+                    event.type == .rightMouseDown
+                guard event.window === window || (!isMouseDown && self.gesture.isTracking)
+                else { return event }
+                return self.handle(event, in: window)
+            }
+        }
+
+        func stopEventMonitor() {
+            if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
+            eventMonitor = nil
+            monitoredWindow = nil
+            gesture.reset()
+        }
+
+        private func handle(_ event: NSEvent, in window: NSWindow) -> NSEvent? {
+            switch event.type {
+            case .leftMouseDown, .rightMouseDown:
+                let isResizeGrip = window.contentView.map {
+                    BorderlessWindowMoveGesture.hitsResizeGrip(
+                        event.locationInWindow, contentBounds: $0.bounds)
+                } ?? false
+                let controlHeld = BorderlessWindowMoveGesture.shouldBegin(
+                    controlInEvent: event.modifierFlags.contains(.control),
+                    controlCurrentlyHeld: NSEvent.modifierFlags.contains(.control))
+                guard controlHeld && !isResizeGrip else {
+                    gesture.reset()
+                    return event
+                }
+                gesture.begin(pointer: NSEvent.mouseLocation,
+                              frame: window.frame,
+                              moveIntent: true)
+                // Keep AppKit/SwiftUI from treating Control-click as a context-menu request.
+                return nil
+            case .leftMouseDragged, .rightMouseDragged:
+                guard gesture.isTracking else { return event }
+                guard let origin = gesture.proposedOrigin(
+                    pointer: NSEvent.mouseLocation,
+                    size: window.frame.size,
+                    visibleFrames: NSScreen.screens.map(\.visibleFrame)) else { return nil }
+                window.setFrameOrigin(origin)
+                return nil
+            case .leftMouseUp, .rightMouseUp:
+                guard gesture.isTracking else { return event }
+                gesture.reset()
+                return nil
+            default:
+                return event
+            }
+        }
+
+        deinit { stopEventMonitor() }
+    }
+}
+
 private struct TimerView: View {
     @EnvironmentObject private var timer: TimerModel
     @EnvironmentObject private var appearance: AppearanceModel
@@ -818,6 +937,13 @@ private struct TimerView: View {
                                      settingsPresented: showingSettings)
                     .frame(width: 36, height: 36)
                     .padding(4)
+                if timer.displayStyle == .digital {
+                    BorderlessWindowMoveMonitor(window: activeWindow,
+                                                enabled: !showingSettings)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
             }
             .animation(.easeInOut(duration: 0.18), value: displayFaceReadable)
             .animation(.easeInOut(duration: 0.18), value: showBorderlessHint)
