@@ -9,6 +9,14 @@ enum DigitalTimerAccessibility {
     }
 }
 
+enum DigitalFullscreenHint {
+    static let durationSeconds = 3
+
+    static func shouldShow(displayStyle: TimerDisplayStyle, isFullscreen: Bool) -> Bool {
+        displayStyle == .digital && isFullscreen
+    }
+}
+
 enum SevenSegmentEncoding {
     // Order: top, upper-right, lower-right, bottom, lower-left, upper-left, middle.
     static func segments(for digit: Character) -> [Bool]? {
@@ -30,6 +38,29 @@ enum SevenSegmentEncoding {
     }
 }
 
+enum DigitalTimerLayout {
+    static func aspectRatio(for timeLabel: String) -> CGFloat {
+        max(2.2, timeLabel.reduce(0.0) { width, character in
+            width + (character == ":" ? 0.18 : 0.62) + 0.055
+        })
+    }
+
+    static func digitHeight(containerSize: CGSize, timeLabel: String, compact: Bool,
+                            hasSessionNotice: Bool) -> CGFloat {
+        let spacing = compact ? CGFloat(8) : CGFloat(16)
+        let verticalPadding = compact ? CGFloat(24) : CGFloat(48)
+        let phaseRow = compact ? CGFloat(11) : CGFloat(14)
+        let noticeRow = hasSessionNotice ? (compact ? CGFloat(20) : CGFloat(24)) : 0
+        let progressRow = compact ? CGFloat(3) : CGFloat(5)
+        let gaps = hasSessionNotice ? 3 : 2
+        let fixedHeight = verticalPadding + phaseRow + noticeRow + progressRow
+            + spacing * CGFloat(gaps)
+        let availableHeight = max(0, containerSize.height - fixedHeight)
+        let availableWidth = max(0, containerSize.width)
+        return min(availableHeight, availableWidth / aspectRatio(for: timeLabel))
+    }
+}
+
 struct DigitalTimerPanel: View {
     let timeLabel: String
     let phaseLabel: String
@@ -43,11 +74,9 @@ struct DigitalTimerPanel: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let ratio = max(2.2, timeLabel.reduce(0.0) { width, character in
-                width + (character == ":" ? 0.18 : 0.62) + 0.055
-            })
-            let digitHeight = min(geometry.size.height * 0.43,
-                                  geometry.size.width / ratio)
+            let digitHeight = DigitalTimerLayout.digitHeight(
+                containerSize: geometry.size, timeLabel: timeLabel,
+                compact: compact, hasSessionNotice: sessionNotice != nil)
 
             VStack(spacing: compact ? 8 : 16) {
                 HStack(spacing: 8) {

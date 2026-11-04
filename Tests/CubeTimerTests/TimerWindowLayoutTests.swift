@@ -35,6 +35,23 @@ final class TimerWindowLayoutTests: XCTestCase {
         XCTAssertEqual(veryTall.displayHeight, 510)
     }
 
+    func testExpandedDigitalPanelUsesMostAvailableWidthAndCapsAt1200Points() {
+        XCTAssertEqual(TimerWindowLayout.digitalPanelWidth(availableWidth: 320), 320)
+        XCTAssertEqual(TimerWindowLayout.digitalPanelWidth(availableWidth: 600), 600)
+        XCTAssertEqual(TimerWindowLayout.digitalPanelWidth(availableWidth: 800), 680)
+        XCTAssertEqual(TimerWindowLayout.digitalPanelWidth(availableWidth: 2_000), 1_200)
+    }
+
+    func testDigitalDisplayUsesAvailableHeightWhileCubeKeepsExistingCap() {
+        let size = NSSize(width: 1_000, height: 1_200)
+        let digital = TimerWindowLayout.standardMetrics(size: size,
+                                                        expandsDigitalDisplay: true)
+        let cube = TimerWindowLayout.standardMetrics(size: size)
+
+        XCTAssertGreaterThan(digital.displayHeight, 510)
+        XCTAssertEqual(cube.displayHeight, 510)
+    }
+
     func testStandardFrameRestorationPreservesValidSizeAndPosition() {
         let saved = NSRect(x: 120, y: 80, width: 580, height: 720)
         let screen = NSRect(x: 0, y: 0, width: 1_440, height: 900)

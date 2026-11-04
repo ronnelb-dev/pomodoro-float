@@ -53,4 +53,51 @@ final class TimerModelAdapterTests: XCTestCase {
         XCTAssertEqual(model.displayStyle, .cube)
         model.reset()
     }
+
+    func testDigitalFullscreenTemporarilyUsesStandardWindowWithoutSavingModeChange() {
+        let suite = "CubeTimerDigitalFullscreenModeTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: "borderlessWindow")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        model.displayStyle = .digital
+        model.start()
+        let activeSession = model.sessionSnapshot
+
+        XCTAssertTrue(model.prepareForDigitalFullscreen())
+        XCTAssertTrue(model.isPreparingDigitalFullscreen)
+        XCTAssertFalse(model.borderlessWindow)
+        XCTAssertEqual(model.sessionSnapshot, activeSession)
+        XCTAssertTrue(defaults.bool(forKey: "borderlessWindow"))
+
+        let relaunchedModel = TimerModel(defaults: defaults, notificationsEnabled: false)
+        XCTAssertTrue(relaunchedModel.borderlessWindow)
+        relaunchedModel.reset()
+
+        model.didEnterDigitalFullscreen()
+        XCTAssertTrue(model.isDigitalFullscreen)
+        model.finishDigitalFullscreen()
+        XCTAssertFalse(model.isDigitalFullscreen)
+        XCTAssertFalse(model.isPreparingDigitalFullscreen)
+        XCTAssertTrue(model.borderlessWindow)
+        XCTAssertTrue(defaults.bool(forKey: "borderlessWindow"))
+        model.reset()
+    }
+
+    func testDigitalFullscreenPromotionIsRejectedForCubeAndLeavesWindowModeUntouched() {
+        let suite = "CubeTimerCubeFullscreenModeTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: "borderlessWindow")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+
+        XCTAssertFalse(model.prepareForDigitalFullscreen())
+        XCTAssertTrue(model.borderlessWindow)
+        XCTAssertTrue(defaults.bool(forKey: "borderlessWindow"))
+        model.reset()
+    }
 }

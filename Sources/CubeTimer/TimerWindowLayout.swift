@@ -12,8 +12,12 @@ enum TimerWindowLayout {
     static let standardMaximumSize = NSSize(width: 850, height: 1_000)
     static let floatingMinimumSide: CGFloat = 240
     static let floatingMaximumSide: CGFloat = 850
+    static let standardContentWidth: CGFloat = 610
+    static let digitalPanelMaximumWidth: CGFloat = 1_200
+    private static let expandedPanelWidthFraction: CGFloat = 0.85
 
-    static func standardMetrics(size: NSSize, transientRowCount: Int = 0)
+    static func standardMetrics(size: NSSize, transientRowCount: Int = 0,
+                                expandsDigitalDisplay: Bool = false)
         -> TimerStandardLayoutMetrics {
         let compact = size.height < 610 || size.width < 390
         let spacing: CGFloat = compact ? 6 : 12
@@ -21,11 +25,20 @@ enum TimerWindowLayout {
         let fixedHeight: CGFloat = 30 + 13 + 20 + (compact ? 49 : 56)
             + (compact ? 47 : 52) + 12 + spacing * 8 + verticalPadding * 2
             + CGFloat(max(0, transientRowCount)) * 15
-        let displayHeight = min(510, max(160, size.height - fixedHeight))
+        let availableDisplayHeight = max(160, size.height - fixedHeight)
+        let displayHeight = expandsDigitalDisplay
+            ? availableDisplayHeight : min(510, availableDisplayHeight)
 
         return TimerStandardLayoutMetrics(compact: compact, spacing: spacing,
                                           verticalPadding: verticalPadding,
                                           displayHeight: displayHeight)
+    }
+
+    static func digitalPanelWidth(availableWidth: CGFloat) -> CGFloat {
+        let availableWidth = max(0, availableWidth)
+        guard availableWidth > standardContentWidth else { return availableWidth }
+        return min(availableWidth, digitalPanelMaximumWidth,
+                   max(standardContentWidth, availableWidth * expandedPanelWidthFraction))
     }
 
     static func resizedFloatingFrame(start: NSRect, horizontalDelta: CGFloat,

@@ -30,6 +30,9 @@ enum SessionPhase: String, Codable {
 
 extension Notification.Name {
     static let cubeTimerWillChangeWindowMode = Notification.Name("CubeTimerWillChangeWindowMode")
+    static let cubeTimerWindowModeDidChange = Notification.Name("CubeTimerWindowModeDidChange")
+    static let cubeTimerDigitalFullscreenExitRequested =
+        Notification.Name("CubeTimerDigitalFullscreenExitRequested")
 }
 
 protocol CompletionNotificationClient: AnyObject {
@@ -124,6 +127,8 @@ final class TimerModel: ObservableObject {
         didSet { coordinator.alwaysOnTop = alwaysOnTop }
     }
     @Published private(set) var borderlessWindow: Bool
+    @Published private(set) var isDigitalFullscreen = false
+    @Published private(set) var isPreparingDigitalFullscreen = false
     @Published var muted: Bool {
         didSet { coordinator.muted = muted }
     }
@@ -198,6 +203,7 @@ final class TimerModel: ObservableObject {
     private let defaults: UserDefaults
     private let timeSource: TimerTimeSource
     private var observation: AnyCancellable?
+    private var temporaryStandardWindowForDigitalFullscreen = false
 
     init(defaults: UserDefaults = .standard, notificationsEnabled: Bool = true,
          now: Date = Date(), notificationClient: CompletionNotificationClient? = nil,
@@ -232,7 +238,8 @@ final class TimerModel: ObservableObject {
                 guard let self else { return }
                 self.sessionSnapshot = self.coordinator.sessionSnapshot
                 self.syncPreferencesFromSessionRuntime()
-                self.borderlessWindow = self.coordinator.borderlessWindow
+                self.borderlessWindow = self.temporaryStandardWindowForDigitalFullscreen
+                    ? false : self.coordinator.borderlessWindow
                 self.objectWillChange.send()
         }
     }
@@ -269,7 +276,38 @@ final class TimerModel: ObservableObject {
     func selectAndStartCubeFace(_ index: Int) { _ = send(.selectAndStartCubeFace(index)) }
     func turn(_ direction: Int) { _ = send(.turn(direction)) }
     func setBorderlessWindow(_ enabled: Bool) {
+        guard !isDigitalFullscreen, !isPreparingDigitalFullscreen else { return }
         coordinator.setBorderlessWindow(enabled)
+        borderlessWindow = temporaryStandardWindowForDigitalFullscreen
+            ? false : coordinator.borderlessWindow
+    }
+
+    @discardableResult
+    func prepareForDigitalFullscreen() -> Bool {
+        guard displayStyle == .digital else { return false }
+        isPreparingDigitalFullscreen = true
+        guard coordinator.borderlessWindow,
+              !temporaryStandardWindowForDigitalFullscreen else { return true }
+
+        NotificationCenter.default.post(name: .cubeTimerWillChangeWindowMode, object: nil)
+        temporaryStandardWindowForDigitalFullscreen = true
+        borderlessWindow = false
+        return true
+    }
+
+    func didEnterDigitalFullscreen() {
+        guard displayStyle == .digital else { return }
+        isPreparingDigitalFullscreen = false
+        isDigitalFullscreen = true
+    }
+
+    func finishDigitalFullscreen() {
+        isPreparingDigitalFullscreen = false
+        isDigitalFullscreen = false
+        guard temporaryStandardWindowForDigitalFullscreen else { return }
+
+        NotificationCenter.default.post(name: .cubeTimerWillChangeWindowMode, object: nil)
+        temporaryStandardWindowForDigitalFullscreen = false
         borderlessWindow = coordinator.borderlessWindow
     }
     func setPreset(_ index: Int, seconds: Int) { _ = send(.setPreset(index, seconds)) }

@@ -39,4 +39,41 @@ final class DigitalTimerDisplayTests: XCTestCase {
                                             statusLabel: "READY", focusProgress: nil),
             "Time remaining 05:00, Countdown, ready")
     }
+
+    func testFullscreenExitHintIsDigitalOnlyAndLastsThreeSeconds() {
+        XCTAssertTrue(DigitalFullscreenHint.shouldShow(displayStyle: .digital,
+                                                       isFullscreen: true))
+        XCTAssertFalse(DigitalFullscreenHint.shouldShow(displayStyle: .cube,
+                                                        isFullscreen: true))
+        XCTAssertFalse(DigitalFullscreenHint.shouldShow(displayStyle: .digital,
+                                                        isFullscreen: false))
+        XCTAssertEqual(DigitalFullscreenHint.durationSeconds, 3)
+    }
+
+    func testDigitHeightUsesBothAvailableDimensionsAndFitsShortPanel() {
+        let compact = DigitalTimerLayout.digitHeight(
+            containerSize: CGSize(width: 310, height: 174),
+            timeLabel: "05:00", compact: true, hasSessionNotice: false)
+        let expanded = DigitalTimerLayout.digitHeight(
+            containerSize: CGSize(width: 1_200, height: 880),
+            timeLabel: "05:00", compact: false, hasSessionNotice: false)
+        let narrow = DigitalTimerLayout.digitHeight(
+            containerSize: CGSize(width: 240, height: 700),
+            timeLabel: "05:00", compact: true, hasSessionNotice: false)
+
+        XCTAssertGreaterThan(expanded, compact)
+        XCTAssertEqual(narrow, 240 / DigitalTimerLayout.aspectRatio(for: "05:00"), accuracy: 0.001)
+        XCTAssertGreaterThan(compact, 0)
+    }
+
+    func testSessionNoticeReservesVerticalRoomForDigits() {
+        let withoutNotice = DigitalTimerLayout.digitHeight(
+            containerSize: CGSize(width: 500, height: 220),
+            timeLabel: "25:00", compact: true, hasSessionNotice: false)
+        let withNotice = DigitalTimerLayout.digitHeight(
+            containerSize: CGSize(width: 500, height: 220),
+            timeLabel: "25:00", compact: true, hasSessionNotice: true)
+
+        XCTAssertLessThan(withNotice, withoutNotice)
+    }
 }
