@@ -3,6 +3,29 @@ import XCTest
 @testable import CubeTimer
 
 final class TimerWindowLayoutTests: XCTestCase {
+    func testAlwaysOnTopIsSuspendedDuringNativeFullscreen() {
+        XCTAssertTrue(TimerWindowLevelPolicy.shouldFloat(alwaysOnTop: true, isFullscreen: false))
+        XCTAssertFalse(TimerWindowLevelPolicy.shouldFloat(alwaysOnTop: true, isFullscreen: true))
+        XCTAssertFalse(TimerWindowLevelPolicy.shouldFloat(alwaysOnTop: false, isFullscreen: false))
+        XCTAssertFalse(TimerWindowLevelPolicy.shouldFloat(
+            alwaysOnTop: true, isFullscreen: false, fullscreenTransitionActive: true))
+    }
+
+    func testFullscreenExitUsesNativeOrModelState() {
+        XCTAssertTrue(DisplayFullscreenExitPolicy.shouldExit(nativeFullscreen: true,
+                                                              modelFullscreen: false))
+        XCTAssertTrue(DisplayFullscreenExitPolicy.shouldExit(nativeFullscreen: false,
+                                                              modelFullscreen: true))
+        XCTAssertFalse(DisplayFullscreenExitPolicy.shouldExit(nativeFullscreen: false,
+                                                               modelFullscreen: false))
+    }
+
+    func testFullscreenDeskClockUses85PercentOfAvailableWidth() {
+        XCTAssertEqual(DeskClockLayout.fullscreenPanelWidth(availableWidth: 1_000), 850)
+        XCTAssertEqual(DeskClockLayout.fullscreenPanelWidth(availableWidth: 240), 204)
+        XCTAssertEqual(DeskClockLayout.fullscreenPanelWidth(availableWidth: -10), 0)
+    }
+
     func testMinimumStandardSizeFitsCompactLayoutWithAllTransientRows() {
         let metrics = TimerWindowLayout.standardMetrics(
             size: TimerWindowLayout.standardMinimumSize,

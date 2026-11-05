@@ -9,11 +9,38 @@ enum DigitalTimerAccessibility {
     }
 }
 
-enum DigitalFullscreenHint {
+enum DisplayFullscreenHint {
     static let durationSeconds = 3
 
     static func shouldShow(displayStyle: TimerDisplayStyle, isFullscreen: Bool) -> Bool {
-        displayStyle == .digital && isFullscreen
+        displayStyle.supportsFullscreen && isFullscreen
+    }
+}
+
+enum DisplayFullscreenTransition {
+    enum EntryAction: Equatable {
+        case reject
+        case toggleNow
+        case waitForStandardWindow
+    }
+
+    enum ModeChangeAction: Equatable {
+        case ignore
+        case toggleNow
+        case waitForStandardWindow
+    }
+
+    static func entryAction(supportsFullscreen: Bool, isNativeFullscreen: Bool,
+                            isBorderless: Bool) -> EntryAction {
+        guard supportsFullscreen else { return .reject }
+        guard !isNativeFullscreen else { return .toggleNow }
+        return isBorderless ? .waitForStandardWindow : .toggleNow
+    }
+
+    static func modeChangeAction(pendingEntry: Bool, windowMatches: Bool,
+                                 isBorderless: Bool) -> ModeChangeAction {
+        guard pendingEntry, windowMatches else { return .ignore }
+        return isBorderless ? .waitForStandardWindow : .toggleNow
     }
 }
 

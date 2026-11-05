@@ -827,7 +827,8 @@ final class CubeSCNView: SCNView {
                                   keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
-        let helpTitle = displayStyle == .cube ? "Floating Cube Help" : "Floating Digital Timer Help"
+        let helpTitle = displayStyle == .cube ? "Floating Cube Help" :
+            displayStyle == .digital ? "Floating Digital Timer Help" : "Floating Desk Clock Help"
         let help = NSMenuItem(title: helpTitle, action: #selector(showFloatingHelp),
                               keyEquivalent: "")
         help.target = self
@@ -843,6 +844,11 @@ final class CubeSCNView: SCNView {
         digitalStyle.target = self
         digitalStyle.state = displayStyle == .digital ? .on : .off
         menu.addItem(digitalStyle)
+        let clockStyle = NSMenuItem(title: "Desk Clock", action: #selector(selectClockStyle),
+                                    keyEquivalent: "")
+        clockStyle.target = self
+        clockStyle.state = displayStyle == .clock ? .on : .off
+        menu.addItem(clockStyle)
         menu.addItem(.separator())
         let mode = NSMenuItem(title: "Borderless Window", action: #selector(toggleBorderless),
                               keyEquivalent: "")
@@ -906,6 +912,7 @@ final class CubeSCNView: SCNView {
     @objc private func resetTimer() { resetHandler?() }
     @objc private func selectCubeStyle() { selectDisplayStyleHandler?(.cube) }
     @objc private func selectDigitalStyle() { selectDisplayStyleHandler?(.digital) }
+    @objc private func selectClockStyle() { selectDisplayStyleHandler?(.clock) }
     @objc private func startNextPhase() { startNextPhaseHandler?() }
     @objc private func skipBreak() { skipBreakHandler?() }
     @objc private func resumePomodoro() { resumePomodoroHandler?() }

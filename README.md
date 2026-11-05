@@ -15,6 +15,7 @@ Pomodoro Float is a native macOS focus timer with two displays: a rotatable 3D c
 ## Features
 
 - Choose Cube or Digital display; the choice is saved between launches.
+- Switch to Desk Clock to show the localized current time with seconds, weekday, and date; the clock can be used while a timer continues running.
 - Switch between the full standard window and a compact floating window. Keep the timer visible while working, and resize either window.
 - Run customizable Pomodoro focus and break cycles, with progress, completion alerts, and session restore.
 - Start a one-off countdown from 00:01 to 99:59 without changing saved presets, or use the MM:SS stopwatch.
@@ -62,6 +63,7 @@ swift test
 - **Start, pause, or resume:** Click the timer or press **Space**. **Command-R** resets it.
 - **Start a preset:** **Command-1** through **Command-5** starts the five default presets: 5, 10, 25, 50, and 60 minutes.
 - **Countdown or stopwatch:** Use the mode buttons below the presets in the standard window, the **Timer** menu, or the floating timer's right-click menu.
+- **Desk Clock:** Choose **Clock** in the display picker or floating menu. The time, weekday, and date follow the Mac's locale and 12/24-hour preference. Digital and Clock modes can enter full screen; press **Esc** to return.
 - **Settings:** Press **Command-,** to adjust durations, Pomodoro cycles, appearance, sounds, and window behavior.
 - **Floating window:** Press **Command-Shift-B** to toggle it. **Control-drag** the cube to move the floating window; hold **Control** and drag its lower-right grip to resize it. Right-click for timer and window controls.
 

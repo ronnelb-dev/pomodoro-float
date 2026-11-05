@@ -32,13 +32,13 @@ final class TimerModelAdapterTests: XCTestCase {
 
         model.start()
         let beforeStyleChange = model.sessionSnapshot
-        model.displayStyle = .digital
+        model.displayStyle = .clock
         XCTAssertEqual(model.sessionSnapshot, beforeStyleChange)
         XCTAssertTrue(model.isRunning)
 
         model.reset()
         let reopenedModel = TimerModel(defaults: defaults, notificationsEnabled: false)
-        XCTAssertEqual(reopenedModel.displayStyle, .digital)
+        XCTAssertEqual(reopenedModel.displayStyle, .clock)
         reopenedModel.reset()
     }
 
@@ -54,20 +54,20 @@ final class TimerModelAdapterTests: XCTestCase {
         model.reset()
     }
 
-    func testDigitalFullscreenTemporarilyUsesStandardWindowWithoutSavingModeChange() {
-        let suite = "CubeTimerDigitalFullscreenModeTests.\(UUID().uuidString)"
+    func testDisplayFullscreenTemporarilyUsesStandardWindowWithoutSavingModeChange() {
+        let suite = "CubeTimerDisplayFullscreenModeTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         defaults.set(true, forKey: "borderlessWindow")
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let model = TimerModel(defaults: defaults, notificationsEnabled: false)
-        model.displayStyle = .digital
+        model.displayStyle = .clock
         model.start()
         let activeSession = model.sessionSnapshot
 
-        XCTAssertTrue(model.prepareForDigitalFullscreen())
-        XCTAssertTrue(model.isPreparingDigitalFullscreen)
+        XCTAssertTrue(model.prepareForDisplayFullscreen())
+        XCTAssertTrue(model.isPreparingDisplayFullscreen)
         XCTAssertFalse(model.borderlessWindow)
         XCTAssertEqual(model.sessionSnapshot, activeSession)
         XCTAssertTrue(defaults.bool(forKey: "borderlessWindow"))
@@ -76,17 +76,17 @@ final class TimerModelAdapterTests: XCTestCase {
         XCTAssertTrue(relaunchedModel.borderlessWindow)
         relaunchedModel.reset()
 
-        model.didEnterDigitalFullscreen()
-        XCTAssertTrue(model.isDigitalFullscreen)
-        model.finishDigitalFullscreen()
-        XCTAssertFalse(model.isDigitalFullscreen)
-        XCTAssertFalse(model.isPreparingDigitalFullscreen)
+        model.didEnterDisplayFullscreen()
+        XCTAssertTrue(model.isDisplayFullscreen)
+        model.finishDisplayFullscreen()
+        XCTAssertFalse(model.isDisplayFullscreen)
+        XCTAssertFalse(model.isPreparingDisplayFullscreen)
         XCTAssertTrue(model.borderlessWindow)
         XCTAssertTrue(defaults.bool(forKey: "borderlessWindow"))
         model.reset()
     }
 
-    func testDigitalFullscreenPromotionIsRejectedForCubeAndLeavesWindowModeUntouched() {
+    func testDisplayFullscreenPromotionIsRejectedForCubeAndLeavesWindowModeUntouched() {
         let suite = "CubeTimerCubeFullscreenModeTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
@@ -95,7 +95,7 @@ final class TimerModelAdapterTests: XCTestCase {
 
         let model = TimerModel(defaults: defaults, notificationsEnabled: false)
 
-        XCTAssertFalse(model.prepareForDigitalFullscreen())
+        XCTAssertFalse(model.prepareForDisplayFullscreen())
         XCTAssertTrue(model.borderlessWindow)
         XCTAssertTrue(defaults.bool(forKey: "borderlessWindow"))
         model.reset()

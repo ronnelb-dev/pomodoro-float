@@ -40,14 +40,74 @@ final class DigitalTimerDisplayTests: XCTestCase {
             "Time remaining 05:00, Countdown, ready")
     }
 
-    func testFullscreenExitHintIsDigitalOnlyAndLastsThreeSeconds() {
-        XCTAssertTrue(DigitalFullscreenHint.shouldShow(displayStyle: .digital,
+    func testFullscreenExitHintSupportsDigitalAndClockForThreeSeconds() {
+        XCTAssertTrue(DisplayFullscreenHint.shouldShow(displayStyle: .digital,
                                                        isFullscreen: true))
-        XCTAssertFalse(DigitalFullscreenHint.shouldShow(displayStyle: .cube,
+        XCTAssertTrue(DisplayFullscreenHint.shouldShow(displayStyle: .clock,
+                                                       isFullscreen: true))
+        XCTAssertFalse(DisplayFullscreenHint.shouldShow(displayStyle: .cube,
                                                         isFullscreen: true))
-        XCTAssertFalse(DigitalFullscreenHint.shouldShow(displayStyle: .digital,
+        XCTAssertFalse(DisplayFullscreenHint.shouldShow(displayStyle: .clock,
                                                         isFullscreen: false))
-        XCTAssertEqual(DigitalFullscreenHint.durationSeconds, 3)
+        XCTAssertEqual(DisplayFullscreenHint.durationSeconds, 3)
+    }
+
+    func testFullscreenTransitionWaitsForBorderlessPromotion() {
+        XCTAssertEqual(
+            DisplayFullscreenTransition.entryAction(
+                supportsFullscreen: true, isNativeFullscreen: false, isBorderless: true),
+            .waitForStandardWindow)
+        XCTAssertEqual(
+            DisplayFullscreenTransition.modeChangeAction(
+                pendingEntry: true, windowMatches: true, isBorderless: true),
+            .waitForStandardWindow)
+        XCTAssertEqual(
+            DisplayFullscreenTransition.modeChangeAction(
+                pendingEntry: true, windowMatches: true, isBorderless: false),
+            .toggleNow)
+    }
+
+    func testFullscreenTransitionTogglesImmediatelyForStandardDigitalAndClockWindows() {
+        for style in [TimerDisplayStyle.digital, .clock] {
+            XCTAssertEqual(
+                DisplayFullscreenTransition.entryAction(
+                    supportsFullscreen: style.supportsFullscreen,
+                    isNativeFullscreen: false, isBorderless: false),
+                .toggleNow)
+        }
+    }
+
+    func testFullscreenTransitionIgnoresCubeAndStaleNotifications() {
+        XCTAssertEqual(
+            DisplayFullscreenTransition.entryAction(
+                supportsFullscreen: false, isNativeFullscreen: false, isBorderless: false),
+            .reject)
+        XCTAssertEqual(
+            DisplayFullscreenTransition.modeChangeAction(
+                pendingEntry: false, windowMatches: true, isBorderless: false),
+            .ignore)
+        XCTAssertEqual(
+            DisplayFullscreenTransition.modeChangeAction(
+                pendingEntry: true, windowMatches: false, isBorderless: false),
+            .ignore)
+    }
+
+    func testDeskClockFormatsLocalizedTimeWithSecondsAndCompactDate() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: 2024, month: 1, day: 3,
+                                                       hour: 13, minute: 5, second: 9))!
+
+        let twelveHour = DeskClockFormatter.presentation(
+            for: date, locale: Locale(identifier: "en_US"), calendar: calendar, timeZone: utc)
+        XCTAssertEqual(twelveHour.time, "1:05:09\u{202F}PM")
+        XCTAssertEqual(twelveHour.dateLine, "Wed, 1/3/2024")
+
+        let twentyFourHour = DeskClockFormatter.presentation(
+            for: date, locale: Locale(identifier: "en_GB"), calendar: calendar, timeZone: utc)
+        XCTAssertEqual(twentyFourHour.time, "13:05:09")
+        XCTAssertEqual(twentyFourHour.dateLine, "Wed, 03/01/2024")
     }
 
     func testDigitHeightUsesBothAvailableDimensionsAndFitsShortPanel() {

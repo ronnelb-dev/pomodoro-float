@@ -7,6 +7,30 @@ struct TimerStandardLayoutMetrics: Equatable {
     let displayHeight: CGFloat
 }
 
+enum TimerWindowLevelPolicy {
+    static func shouldFloat(alwaysOnTop: Bool, isFullscreen: Bool) -> Bool {
+        shouldFloat(alwaysOnTop: alwaysOnTop, isFullscreen: isFullscreen,
+                    fullscreenTransitionActive: false)
+    }
+
+    static func shouldFloat(alwaysOnTop: Bool, isFullscreen: Bool,
+                            fullscreenTransitionActive: Bool) -> Bool {
+        alwaysOnTop && !isFullscreen && !fullscreenTransitionActive
+    }
+}
+
+enum DisplayFullscreenExitPolicy {
+    static func shouldExit(nativeFullscreen: Bool, modelFullscreen: Bool) -> Bool {
+        nativeFullscreen || modelFullscreen
+    }
+}
+
+enum DeskClockLayout {
+    static func fullscreenPanelWidth(availableWidth: CGFloat) -> CGFloat {
+        max(0, availableWidth * 0.85)
+    }
+}
+
 enum TimerWindowLayout {
     static let standardMinimumSize = NSSize(width: 350, height: 490)
     static let standardMaximumSize = NSSize(width: 850, height: 1_000)
