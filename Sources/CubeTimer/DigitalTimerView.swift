@@ -2,8 +2,8 @@ import SwiftUI
 
 enum DigitalTimerAccessibility {
     static func value(timeLabel: String, phaseLabel: String, statusLabel: String,
-                      focusProgress: String?) -> String {
-        var value = "Time remaining \(timeLabel), \(phaseLabel), \(statusLabel.lowercased())"
+                      focusProgress: String?, isStopwatch: Bool = false) -> String {
+        var value = "Time \(isStopwatch ? "elapsed" : "remaining") \(timeLabel), \(phaseLabel), \(statusLabel.lowercased())"
         if let focusProgress { value += ", focus progress \(focusProgress)" }
         return value
     }
@@ -68,6 +68,7 @@ struct DigitalTimerPanel: View {
     let focusProgress: String?
     let sessionNotice: String?
     let progress: Double
+    let showsProgress: Bool
     let accent: Color
     let colors: UIColors
     let compact: Bool
@@ -113,25 +114,27 @@ struct DigitalTimerPanel: View {
                     .frame(maxWidth: .infinity)
                     .accessibilityHidden(true)
 
-                HStack(spacing: 10) {
-                    if let focusProgress {
-                        Text("FOCUS  \(focusProgress)")
-                            .font(.system(size: compact ? 8 : 10, weight: .bold,
-                                          design: .monospaced))
-                            .tracking(0.8)
-                            .foregroundStyle(colors.secondary)
-                    }
-                    GeometryReader { progressGeometry in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(colors.edge)
-                            Capsule()
-                                .fill(accent)
-                                .frame(width: progressGeometry.size.width *
-                                       min(1, max(0, progress)))
+                if showsProgress {
+                    HStack(spacing: 10) {
+                        if let focusProgress {
+                            Text("FOCUS  \(focusProgress)")
+                                .font(.system(size: compact ? 8 : 10, weight: .bold,
+                                              design: .monospaced))
+                                .tracking(0.8)
+                                .foregroundStyle(colors.secondary)
                         }
+                        GeometryReader { progressGeometry in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(colors.edge)
+                                Capsule()
+                                    .fill(accent)
+                                    .frame(width: progressGeometry.size.width *
+                                           min(1, max(0, progress)))
+                            }
+                        }
+                        .frame(height: compact ? 3 : 5)
+                        .accessibilityHidden(true)
                     }
-                    .frame(height: compact ? 3 : 5)
-                    .accessibilityHidden(true)
                 }
             }
             .padding(compact ? 12 : 24)
@@ -149,7 +152,8 @@ struct DigitalTimerPanel: View {
             .accessibilityLabel("Digital timer")
             .accessibilityValue(DigitalTimerAccessibility.value(
                 timeLabel: timeLabel, phaseLabel: phaseLabel,
-                statusLabel: statusLabel, focusProgress: focusProgress))
+                statusLabel: statusLabel, focusProgress: focusProgress,
+                isStopwatch: !showsProgress))
         }
     }
 }

@@ -39,6 +39,19 @@ final class TimerSessionPersistenceTests: XCTestCase {
         XCTAssertNil(defaults.data(forKey: SavedTimerSession.key))
     }
 
+    func testVersionSixRequiresAnExplicitSessionKind() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let persistence = TimerSessionPersistence(defaults: defaults)
+        let session = SavedTimerSession(version: 6, state: .paused,
+                                        selectedPreset: 0, phase: .focus,
+                                        total: 300, deadline: nil,
+                                        pausedRemaining: 120, cycleTarget: 4)
+        persistence.save(session)
+        XCTAssertNil(persistence.load(defaultFlowEnabled: false,
+                                      defaultPomodoroModeEnabled: false))
+    }
+
     private func isolatedDefaults() -> (UserDefaults, String) {
         let suite = "CubeTimerSessionPersistenceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

@@ -17,6 +17,7 @@ Pomodoro Float is a native macOS focus timer with two displays: a rotatable 3D c
 - Choose Cube or Digital display; the choice is saved between launches.
 - Switch between the full standard window and a compact floating window. Keep the timer visible while working, and resize either window.
 - Run customizable Pomodoro focus and break cycles, with progress, completion alerts, and session restore.
+- Start a one-off countdown from 00:01 to 99:59 without changing saved presets, or use the MM:SS stopwatch.
 - Adjust themes, cube appearance, sounds, and timer behavior in the built-in settings.
 
 ## Requirements
@@ -60,10 +61,17 @@ swift test
 
 - **Start, pause, or resume:** Click the timer or press **Space**. **Command-R** resets it.
 - **Start a preset:** **Command-1** through **Command-5** starts the five default presets: 5, 10, 25, 50, and 60 minutes.
+- **Countdown or stopwatch:** Use the mode buttons below the presets in the standard window, the **Timer** menu, or the floating timer's right-click menu.
 - **Settings:** Press **Command-,** to adjust durations, Pomodoro cycles, appearance, sounds, and window behavior.
 - **Floating window:** Press **Command-Shift-B** to toggle it. **Control-drag** the cube to move the floating window; hold **Control** and drag its lower-right grip to resize it. Right-click for timer and window controls.
 
 Pomodoro defaults are 25 minutes of focus, a 5-minute short break, and a 15-minute long break after four focuses. Timer sessions and preferences are saved across launches.
+
+## Countdown and stopwatch
+
+- **Countdown:** Click **COUNTDOWN** to enter any duration from 00:01 to 99:59, then click **Start**. Opening or dismissing the time-entry popover does not interrupt the current timer, and starting a countdown does not change the saved presets.
+- **Stopwatch:** Click **STOPWATCH** to start counting up immediately. Use the regular timer control or **Space** to pause and resume, and **Command-R** to reset. The stopwatch stops at 99:59 without a completion alert.
+- **During Pomodoro:** Starting either mode suspends the current phase. Use **Resume Pomodoro** to return to it. When a mode replaces an active timer, **Undo** is available for six seconds.
 
 ## License
 

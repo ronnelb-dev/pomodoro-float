@@ -51,6 +51,8 @@ struct TimerSessionTime: Equatable {
 struct TimerSessionCommand {
     enum Action {
         case selectPreset(Int)
+        case startCustomCountdown(Int)
+        case startStopwatch
         case selectAndStartPreset(Int)
         case selectAndStartCubeFace(Int)
         case turn(Int)
@@ -78,6 +80,7 @@ struct TimerSessionCommand {
 }
 
 struct TimerSessionSnapshot: Equatable {
+    let sessionKind: TimerSessionKind
     let selectedPreset: Int
     let phase: SessionPhase
     let remaining: TimeInterval
@@ -123,6 +126,7 @@ final class TimerSessionCoordinator: ObservableObject {
     }
 
     @Published private(set) var presetSeconds: [Int]
+    @Published private(set) var sessionKind: TimerSessionKind = .presetCountdown
     @Published private(set) var selectedPreset: Int
     @Published private(set) var remaining: TimeInterval
     @Published private(set) var total: TimeInterval
@@ -161,8 +165,9 @@ final class TimerSessionCoordinator: ObservableObject {
         didSet { defaults.set(autoStartNextPhase, forKey: "autoStartNextPhase") }
     }
 
-    var progress: Double { TimerEngine.progress(remaining: remaining, total: total) }
-    var timeLabel: String { TimerEngine.display(remaining) }
+    var progress: Double { sessionKind == .stopwatch ? 0 : TimerEngine.progress(remaining: remaining, total: total) }
+    var timeLabel: String { sessionKind == .stopwatch ?
+        TimerEngine.stopwatchDisplay(remaining) : TimerEngine.display(remaining) }
     var requestedFlowEnabled: Bool { pendingFlowEnabled ?? pomodoroModeEnabled }
     var hasSuspendedPomodoro: Bool { suspendedPomodoro != nil }
     var longBreakDue: Bool { focusesInCycle >= cycleTarget }
@@ -192,13 +197,18 @@ final class TimerSessionCoordinator: ObservableObject {
     }
     var accessibilityValue: String {
         let state = isComplete ? "Complete" : isRunning ? "Running" : isPaused ? "Paused" : "Ready"
-        let session = flowEnabled
+        let session = sessionKind == .stopwatch
+            ? "Stopwatch, \(TimerEngine.spokenDuration(remaining.rounded(.down))) elapsed"
+            : sessionKind == .customCountdown
+            ? "Countdown"
+            : flowEnabled
             ? "\(phase.displayName) session, \(phase == .longBreak ? TimerEngine.spokenDuration(total) : Self.spokenPresetName(selectedPreset))"
             : "\(Self.spokenPresetName(selectedPreset))\(hasSuspendedPomodoro ? ", Pomodoro paused" : "")"
         let count = pomodoroModeEnabled
             ? ", \(focusesInCycle) of \(cycleTarget) focuses toward long break, \(completedFocusTotal) completed focuses total"
             : ""
-        return "\(session), \(state), \(TimerEngine.spokenDuration(remaining)) remaining\(count)"
+        return sessionKind == .stopwatch ? "\(session), \(state)\(count)" :
+            "\(session), \(state), \(TimerEngine.spokenDuration(remaining)) remaining\(count)"
     }
     private let defaults: UserDefaults
     private let sessionPersistence: TimerSessionPersistence
@@ -305,7 +315,7 @@ final class TimerSessionCoordinator: ObservableObject {
     }
 
     var sessionSnapshot: TimerSessionSnapshot {
-        TimerSessionSnapshot(selectedPreset: selectedPreset, phase: phase,
+        TimerSessionSnapshot(sessionKind: sessionKind, selectedPreset: selectedPreset, phase: phase,
                              remaining: remaining, total: total, isRunning: isRunning,
                              isPaused: isPaused, isComplete: isComplete,
                              flowEnabled: flowEnabled,
@@ -330,6 +340,9 @@ final class TimerSessionCoordinator: ObservableObject {
         var accepted = true
         switch command.action {
         case .selectPreset(let index): selectPreset(index)
+        case .startCustomCountdown(let seconds):
+            accepted = startCustomCountdown(seconds: seconds)
+        case .startStopwatch: startStopwatch()
         case .selectAndStartPreset(let index): selectAndStartPreset(index)
         case .selectAndStartCubeFace(let index): selectAndStartCubeFace(index)
         case .turn(let direction): turn(direction)
@@ -372,6 +385,7 @@ final class TimerSessionCoordinator: ObservableObject {
             suspendedPomodoro = frozenPomodoro()
         }
         stop()
+        sessionKind = .presetCountdown
         selectedPreset = index
         defaults.set(index, forKey: "selectedPreset")
         if suspendedPomodoro != nil {
@@ -399,6 +413,35 @@ final class TimerSessionCoordinator: ObservableObject {
         if !muted { presetSound.play(volume: volume) }
     }
 
+    @discardableResult
+    func startCustomCountdown(seconds: Int) -> Bool {
+        guard (TimerEngine.minimumDuration...TimerEngine.maximumDuration).contains(seconds) else {
+            return false
+        }
+        preparePresetUndo()
+        if flowEnabled && suspendedPomodoro == nil { suspendedPomodoro = frozenPomodoro() }
+        stop()
+        flowEnabled = false
+        sessionKind = .customCountdown
+        total = TimeInterval(seconds)
+        remaining = total
+        clearAlert()
+        start(preservingPresetUndo: true)
+        return true
+    }
+
+    func startStopwatch() {
+        preparePresetUndo()
+        if flowEnabled && suspendedPomodoro == nil { suspendedPomodoro = frozenPomodoro() }
+        stop()
+        flowEnabled = false
+        sessionKind = .stopwatch
+        total = TimeInterval(TimerEngine.maximumDuration)
+        remaining = 0
+        clearAlert()
+        start(preservingPresetUndo: true)
+    }
+
     func turn(_ direction: Int) {
         let count = Self.defaultDurations.count
         selectPreset(((selectedPreset + direction) % count + count) % count)
@@ -416,7 +459,8 @@ final class TimerSessionCoordinator: ObservableObject {
         guard value != presetSeconds[index] else { return }
         presetSeconds[index] = value
         defaults.set(value, forKey: "presetSeconds.\(index)")
-        if index == selectedPreset && !(flowEnabled && phase == .longBreak) &&
+        if sessionKind == .presetCountdown && index == selectedPreset &&
+            !(flowEnabled && phase == .longBreak) &&
             !isRunning && !isPaused && !isComplete {
             total = TimeInterval(value)
             remaining = total
@@ -493,6 +537,7 @@ final class TimerSessionCoordinator: ObservableObject {
     }
 
     private func durationSettingIsCurrent(_ setting: DurationSetting) -> Bool {
+        guard sessionKind == .presetCountdown else { return false }
         switch setting {
         case .preset(let index):
             return index == selectedPreset && !(flowEnabled && phase == .longBreak)
@@ -565,6 +610,7 @@ final class TimerSessionCoordinator: ObservableObject {
             clearPresetUndo()
         }
         stop()
+        sessionKind = .presetCountdown
         pendingFlowEnabled = nil
         pomodoroModeEnabled = enabled
         defaults.set(enabled, forKey: "flowEnabled")
@@ -601,6 +647,7 @@ final class TimerSessionCoordinator: ObservableObject {
         guard let suspended = suspendedPomodoro else { return false }
         preparePresetUndo()
         stop()
+        sessionKind = .presetCountdown
         suspendedPomodoro = nil
         pendingFlowEnabled = nil
         pomodoroModeEnabled = true
@@ -644,6 +691,7 @@ final class TimerSessionCoordinator: ObservableObject {
         guard canSkipBreak else { return }
         clearPresetUndo()
         stop()
+        sessionKind = .presetCountdown
         if phase == .longBreak || longBreakDue { finishLongBreakCycle() }
         phase = .focus
         selectedPreset = 2
@@ -664,21 +712,26 @@ final class TimerSessionCoordinator: ObservableObject {
         if !preservingPresetUndo { clearPresetUndo() }
         let wasPaused = isPaused
         let wasComplete = isComplete
-        if isComplete {
+        if sessionKind == .stopwatch {
+            if isComplete { remaining = 0 }
+        } else if isComplete {
             if flowEnabled {
                 phase = upcomingPhase
                 selectedPreset = phase.presetIndex
                 defaults.set(selectedPreset, forKey: "selectedPreset")
             }
-            total = flowEnabled ? duration(for: phase) : TimeInterval(presetSeconds[selectedPreset])
+            total = flowEnabled ? duration(for: phase) :
+                sessionKind == .customCountdown ? total : TimeInterval(presetSeconds[selectedPreset])
             remaining = total
         } else if remaining <= 0 {
-            total = flowEnabled ? duration(for: phase) : TimeInterval(presetSeconds[selectedPreset])
+            total = flowEnabled ? duration(for: phase) :
+                sessionKind == .customCountdown ? total : TimeInterval(presetSeconds[selectedPreset])
             remaining = total
         }
         if flowEnabled && phase == .longBreak && longBreakDue { focusesInCycle = 0 }
-        deadline = currentWallNow.addingTimeInterval(remaining)
-        continuousDeadline = currentContinuousNow + remaining
+        let timeToLimit = sessionKind == .stopwatch ? total - remaining : remaining
+        deadline = currentWallNow.addingTimeInterval(timeToLimit)
+        continuousDeadline = currentContinuousNow + timeToLimit
         isRunning = true
         isPaused = false
         isComplete = false
@@ -686,9 +739,14 @@ final class TimerSessionCoordinator: ObservableObject {
         saveSession()
         scheduleCurrentNotification()
         if wasPaused {
-            announce("Resumed. \(TimerEngine.spokenDuration(remaining)) remaining.")
+            announce(sessionKind == .stopwatch ? "Stopwatch resumed." :
+                     "Resumed. \(TimerEngine.spokenDuration(remaining)) remaining.")
         } else if wasComplete && flowEnabled {
             announce("\(phase.displayName) session started. \(TimerEngine.spokenDuration(remaining)) remaining.")
+        } else if sessionKind == .stopwatch {
+            announce("Stopwatch started.")
+        } else if sessionKind == .customCountdown {
+            announce("Countdown started. \(TimerEngine.spokenDuration(remaining)) remaining.")
         } else {
             announce("\(Self.spokenPresetName(selectedPreset)) started. \(TimerEngine.spokenDuration(remaining)) remaining.")
         }
@@ -698,16 +756,22 @@ final class TimerSessionCoordinator: ObservableObject {
         guard isRunning else { return }
         clearPresetUndo()
         if let continuousDeadline {
-            remaining = max(0, continuousDeadline - currentContinuousNow)
+            let timeToLimit = max(0, continuousDeadline - currentContinuousNow)
+            remaining = sessionKind == .stopwatch ? total - timeToLimit : timeToLimit
         }
-        if remaining == 0 { refresh(); return }
+        if (sessionKind == .stopwatch ? remaining >= total : remaining == 0) {
+            refresh()
+            return
+        }
         deadline = nil
         continuousDeadline = nil
         isRunning = false
         isPaused = true
         saveSession()
         notifications?.cancel()
-        announce("Paused. \(TimerEngine.spokenDuration(remaining)) remaining.")
+        announce(sessionKind == .stopwatch ?
+                 "Stopwatch paused at \(TimerEngine.stopwatchDisplay(remaining))." :
+                 "Paused. \(TimerEngine.spokenDuration(remaining)) remaining.")
     }
 
     func reset() {
@@ -718,11 +782,14 @@ final class TimerSessionCoordinator: ObservableObject {
             announce("Timer reset. \(pendingFlowEnabled ? "Pomodoro" : "Countdown") ready.")
             return
         }
-        total = flowEnabled ? duration(for: phase) : TimeInterval(presetSeconds[selectedPreset])
-        remaining = total
+        total = flowEnabled ? duration(for: phase) : sessionKind == .customCountdown ? total :
+            sessionKind == .stopwatch ? TimeInterval(TimerEngine.maximumDuration) :
+            TimeInterval(presetSeconds[selectedPreset])
+        remaining = sessionKind == .stopwatch ? 0 : total
         clearAlert()
         saveSession()
-        announce("Timer reset. \(TimerEngine.spokenDuration(remaining)) ready.")
+        announce(sessionKind == .stopwatch ? "Stopwatch reset." :
+                 "Timer reset. \(TimerEngine.spokenDuration(remaining)) ready.")
     }
 
     private var currentWallNow: Date { commandTime?.wall ?? timeSource.wallNow }
@@ -747,6 +814,28 @@ final class TimerSessionCoordinator: ObservableObject {
         activateDeferredModeUndoIfNeeded(at: current.continuous)
         expirePresetUndo(at: current.continuous)
         guard isRunning, let continuousDeadline else { return }
+        if sessionKind == .stopwatch {
+            remaining = min(total, max(0, total - (continuousDeadline - current.continuous)))
+            if remaining >= total {
+                deadline = nil
+                self.continuousDeadline = nil
+                isRunning = false
+                isComplete = true
+                notifications?.cancel()
+                if let pendingFlowEnabled {
+                    applyModeChange(pendingFlowEnabled)
+                    showAlert("Stopwatch stopped at 99:59")
+                } else {
+                    saveSession()
+                }
+                announce("Stopwatch stopped at 99:59.")
+            } else if let deadline,
+                      abs(deadline.timeIntervalSince(current.wall) - (total - remaining)) > 1 {
+                self.deadline = current.wall.addingTimeInterval(total - remaining)
+                saveSession()
+            }
+            return
+        }
         remaining = max(0, continuousDeadline - current.continuous)
         if remaining == 0 {
             complete(expiredDeadline: continuousDeadline, at: current,
@@ -772,7 +861,8 @@ final class TimerSessionCoordinator: ObservableObject {
     }
 
     private func scheduleCurrentNotification(at continuousNow: TimeInterval? = nil) {
-        guard !wasSleeping, isRunning, let continuousDeadline else { return }
+        guard sessionKind != .stopwatch, !wasSleeping, isRunning,
+              let continuousDeadline else { return }
         let timeLeft = max(0, continuousDeadline - (continuousNow ?? currentContinuousNow))
         guard timeLeft > 0 else { return }
         notifications?.schedule(after: timeLeft, title: notificationTitle,
@@ -900,7 +990,7 @@ final class TimerSessionCoordinator: ObservableObject {
     private func snapshotSession() -> SavedTimerSession {
         let state: SavedTimerSession.State = isRunning ? .running : isPaused ? .paused :
             isComplete ? .completed : .ready
-        return SavedTimerSession(version: 5, state: state,
+        return SavedTimerSession(version: 6, state: state,
                                  selectedPreset: selectedPreset, phase: phase, total: total,
                                  deadline: isRunning ? deadline : nil,
                                  pausedRemaining: isPaused ? remaining : nil,
@@ -912,7 +1002,8 @@ final class TimerSessionCoordinator: ObservableObject {
                                  suspendedPomodoro: suspendedPomodoro,
                                  focusesInCycle: focusesInCycle,
                                  completedFocusTotal: completedFocusTotal,
-                                 cycleTarget: cycleTarget)
+                                 cycleTarget: cycleTarget,
+                                 sessionKind: sessionKind)
     }
 
     private func installUndo(_ previous: SavedTimerSession, at now: TimeInterval,
@@ -925,7 +1016,9 @@ final class TimerSessionCoordinator: ObservableObject {
                               continuousExpiresAt: deferUntilActive && !appIsActive()
                                   ? .infinity : now + 6, id: UUID())
         presetUndo = undo
-        undoPresetLabel = label ?? TimerEngine.display(previous.total)
+        undoPresetLabel = label ?? (previous.sessionKind == .stopwatch ? "Stopwatch" :
+            previous.sessionKind == .customCountdown ? "Countdown" :
+            TimerEngine.display(previous.total))
         undoExpiryTask?.cancel()
         if undo.continuousExpiresAt.isFinite { scheduleUndoExpiry(for: undo) }
     }
@@ -972,11 +1065,12 @@ final class TimerSessionCoordinator: ObservableObject {
         selectedPreset = undo.session.selectedPreset
         defaults.set(selectedPreset, forKey: "selectedPreset")
         phase = undo.session.phase
+        sessionKind = undo.session.sessionKind ?? .presetCountdown
         total = undo.session.total
 
         switch undo.session.state {
         case .ready:
-            remaining = total
+            remaining = sessionKind == .stopwatch ? 0 : total
             saveSession()
             showAlert("Timer restored")
         case .paused:
@@ -994,12 +1088,19 @@ final class TimerSessionCoordinator: ObservableObject {
                 deadline = abs(originalDeadline.timeIntervalSince(current.wall) - timeLeft) <= 1
                     ? originalDeadline : current.wall.addingTimeInterval(timeLeft)
                 continuousDeadline = originalContinuous
-                remaining = min(total, timeLeft)
+                remaining = sessionKind == .stopwatch ? total - min(total, timeLeft) :
+                    min(total, timeLeft)
                 isRunning = true
                 saveSession()
                 scheduleCurrentNotification(at: current.continuous)
                 showAlert("Timer restored")
-                announce("Timer restored. \(TimerEngine.spokenDuration(remaining)) remaining.")
+                announce(sessionKind == .stopwatch ? "Stopwatch restored." :
+                         "Timer restored. \(TimerEngine.spokenDuration(remaining)) remaining.")
+            } else if sessionKind == .stopwatch {
+                remaining = total
+                isComplete = true
+                saveSession()
+                showAlert("Stopwatch restored · Stopped at 99:59")
             } else if let pendingFlowEnabled {
                 applyModeChange(pendingFlowEnabled)
                 showAlert("Timer restored · \(pendingFlowEnabled ? "Pomodoro" : "Countdown") ready")
@@ -1019,7 +1120,7 @@ final class TimerSessionCoordinator: ObservableObject {
                 announce("Timer restored. Timer complete.")
             }
         case .completed:
-            remaining = 0
+            remaining = sessionKind == .stopwatch ? total : 0
             isComplete = true
             saveSession()
             showAlert("Completed timer restored")
@@ -1049,7 +1150,7 @@ final class TimerSessionCoordinator: ObservableObject {
     }
 
     private func saveSession() {
-        if !isRunning && !isPaused && !isComplete && !flowEnabled &&
+        if sessionKind == .presetCountdown && !isRunning && !isPaused && !isComplete && !flowEnabled &&
             suspendedPomodoro == nil && pendingFlowEnabled == nil &&
             completedFocusTotal == 0 && focusesInCycle == 0 {
             sessionPersistence.clear()
@@ -1069,6 +1170,7 @@ final class TimerSessionCoordinator: ObservableObject {
         pomodoroModeEnabled = saved.pomodoroModeEnabled ?? pomodoroModeEnabled
         pendingFlowEnabled = saved.pendingFlowEnabled
         suspendedPomodoro = saved.suspendedPomodoro
+        sessionKind = saved.sessionKind ?? .presetCountdown
         defaults.set(pomodoroModeEnabled, forKey: "flowEnabled")
         switch saved.state {
         case .running:
@@ -1091,28 +1193,30 @@ final class TimerSessionCoordinator: ObservableObject {
             phase = saved.phase
             total = saved.total
             if timeLeft > 0 {
-                remaining = min(total, timeLeft)
-                deadline = now.addingTimeInterval(remaining)
-                continuousDeadline = testOriginContinuous + remaining
+                remaining = sessionKind == .stopwatch ? total - min(total, timeLeft) :
+                    min(total, timeLeft)
+                deadline = now.addingTimeInterval(timeLeft)
+                continuousDeadline = testOriginContinuous + timeLeft
                 isRunning = true
                 saveSession()
                 scheduleCurrentNotification()
             } else {
-                remaining = 0
+                remaining = sessionKind == .stopwatch ? total : 0
                 isComplete = true
-                recordFocusCompletionIfNeeded()
+                if sessionKind != .stopwatch { recordFocusCompletionIfNeeded() }
                 if phase == .longBreak { finishLongBreakCycle() }
                 if let pendingFlowEnabled {
                     applyModeChange(pendingFlowEnabled)
                     showAlert("Timer complete · \(pendingFlowEnabled ? "Pomodoro" : "Countdown") ready")
                 } else {
                     saveSession()
-                    showAlert(flowEnabled ? "\(phase.displayName) complete" : "Time is up")
+                    showAlert(sessionKind == .stopwatch ? "Stopwatch stopped at 99:59" :
+                              flowEnabled ? "\(phase.displayName) complete" : "Time is up")
                 }
             }
         case .paused:
             guard let paused = saved.pausedRemaining, paused.isFinite,
-                  paused > 0, paused <= saved.total else {
+                  paused >= (sessionKind == .stopwatch ? 0 : 1), paused <= saved.total else {
                 sessionPersistence.clear()
                 return
             }
@@ -1126,14 +1230,14 @@ final class TimerSessionCoordinator: ObservableObject {
             selectedPreset = saved.selectedPreset
             phase = saved.phase
             total = saved.total
-            remaining = 0
+            remaining = sessionKind == .stopwatch ? total : 0
             isComplete = true
             saveSession()
         case .ready:
             selectedPreset = saved.selectedPreset
             phase = saved.phase
             total = saved.total
-            remaining = total
+            remaining = sessionKind == .stopwatch ? 0 : total
             saveSession()
         }
     }

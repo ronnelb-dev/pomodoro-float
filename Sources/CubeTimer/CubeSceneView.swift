@@ -115,6 +115,7 @@ struct CubeSceneView: NSViewRepresentable {
     let presetSeconds: [Int]
     let timeLabel: String
     let progress: Double
+    let showsCountdownProgress: Bool
     let appearance: CubeAppearance
     let automaticReadableDigits: Bool
     let completed: Bool
@@ -132,6 +133,8 @@ struct CubeSceneView: NSViewRepresentable {
     var displayStyle: TimerDisplayStyle = .cube
     let onDisplayClick: () -> Void
     let onOpenSettings: () -> Void
+    var onOpenCustomCountdown: (() -> Void)? = nil
+    var onStartStopwatch: (() -> Void)? = nil
     let onShowFloatingHelp: () -> Void
     let onToggleBorderless: () -> Void
     let onToggleAlwaysOnTop: () -> Void
@@ -160,7 +163,9 @@ struct CubeSceneView: NSViewRepresentable {
         configureInteraction(view, coordinator: context.coordinator)
         context.coordinator.render(view: view, selectedPreset: selectedPreset,
                                    presetSeconds: presetSeconds, timeLabel: timeLabel,
-                                   progress: progress, appearance: appearance,
+                                   progress: progress,
+                                   showsCountdownProgress: showsCountdownProgress,
+                                   appearance: appearance,
                                    automaticReadableDigits: automaticReadableDigits,
                                    completed: completed, focusMarks: focusMarks,
                                    sessionLabel: sessionLabel)
@@ -172,7 +177,9 @@ struct CubeSceneView: NSViewRepresentable {
         configureInteraction(view, coordinator: context.coordinator)
         context.coordinator.render(view: view, selectedPreset: selectedPreset,
                                    presetSeconds: presetSeconds, timeLabel: timeLabel,
-                                   progress: progress, appearance: appearance,
+                                   progress: progress,
+                                   showsCountdownProgress: showsCountdownProgress,
+                                   appearance: appearance,
                                    automaticReadableDigits: automaticReadableDigits,
                                    completed: completed, focusMarks: focusMarks,
                                    sessionLabel: sessionLabel)
@@ -191,6 +198,8 @@ struct CubeSceneView: NSViewRepresentable {
         }
         view.displayClickHandler = interactive ? onDisplayClick : nil
         view.openSettingsHandler = interactive ? onOpenSettings : nil
+        view.customCountdownHandler = interactive ? onOpenCustomCountdown : nil
+        view.startStopwatchHandler = interactive ? onStartStopwatch : nil
         view.showFloatingHelpHandler = interactive ? onShowFloatingHelp : nil
         view.toggleBorderlessHandler = interactive ? onToggleBorderless : nil
         view.toggleAlwaysOnTopHandler = interactive ? onToggleAlwaysOnTop : nil
@@ -361,7 +370,8 @@ struct CubeSceneView: NSViewRepresentable {
         }
 
         func render(view: CubeSCNView, selectedPreset: Int, presetSeconds: [Int],
-                    timeLabel: String, progress: Double, appearance: CubeAppearance,
+                    timeLabel: String, progress: Double, showsCountdownProgress: Bool,
+                    appearance: CubeAppearance,
                     automaticReadableDigits: Bool, completed: Bool,
                     focusMarks: CubeFocusProgress?, sessionLabel: String?) {
             activeView = view
@@ -377,7 +387,8 @@ struct CubeSceneView: NSViewRepresentable {
             let styleChanged = lastAppearance != appearance
             let timesChanged = lastTimes != presetSeconds
             let emphasis = DisplayStrokeSizing.emphasis(for: view.bounds.size)
-            let segments = Int(ceil((1 - min(1, max(0, progress))) * 60))
+            let segments = !showsCountdownProgress ? -1 :
+                Int(ceil((1 - min(1, max(0, progress))) * 60))
             let displayChanged = lastDisplay != timeLabel || lastSegments != segments ||
                 lastCompleted != completed ||
                 lastFocusMarks != focusMarks || lastSessionLabel != sessionLabel ||
@@ -573,6 +584,8 @@ final class CubeSCNView: SCNView {
     var displayClickHandler: (() -> Void)?
     fileprivate var hoverHandler: ((CubeHoverTarget?) -> Void)?
     var openSettingsHandler: (() -> Void)?
+    var customCountdownHandler: (() -> Void)?
+    var startStopwatchHandler: (() -> Void)?
     var showFloatingHelpHandler: (() -> Void)?
     var toggleBorderlessHandler: (() -> Void)?
     var toggleAlwaysOnTopHandler: (() -> Void)?
@@ -846,6 +859,18 @@ final class CubeSCNView: SCNView {
                                keyEquivalent: "")
         reset.target = self
         menu.addItem(reset)
+        if customCountdownHandler != nil {
+            let custom = NSMenuItem(title: "Countdown…",
+                                    action: #selector(openCustomCountdown), keyEquivalent: "")
+            custom.target = self
+            menu.addItem(custom)
+        }
+        if startStopwatchHandler != nil {
+            let stopwatch = NSMenuItem(title: "Start Stopwatch",
+                                       action: #selector(startStopwatch), keyEquivalent: "")
+            stopwatch.target = self
+            menu.addItem(stopwatch)
+        }
         if let nextPhaseName, startNextPhaseHandler != nil {
             let next = NSMenuItem(title: "Start \(nextPhaseName)", action: #selector(startNextPhase),
                                   keyEquivalent: "")
@@ -873,6 +898,8 @@ final class CubeSCNView: SCNView {
     }
 
     @objc private func openSettings() { openSettingsHandler?() }
+    @objc private func openCustomCountdown() { customCountdownHandler?() }
+    @objc private func startStopwatch() { startStopwatchHandler?() }
     @objc private func showFloatingHelp() { showFloatingHelpHandler?() }
     @objc private func toggleBorderless() { toggleBorderlessHandler?() }
     @objc private func toggleAlwaysOnTop() { toggleAlwaysOnTopHandler?() }
@@ -983,7 +1010,7 @@ private enum CubeFaceGraphics {
             context.setStrokeColor(NSColor(calibratedWhite: 0.19, alpha: 0.8).cgColor)
             context.strokeEllipse(in: outer.insetBy(dx: 24, dy: 24))
 
-            for segment in 0..<60 {
+            for segment in 0..<(litSegments < 0 ? 0 : 60) {
                 let angle = Double.pi / 2 - Double(segment) * 2 * Double.pi / 60
                 let inner = CGFloat(301) - 6 * emphasis
                 let outer = CGFloat(350) + 5 * emphasis

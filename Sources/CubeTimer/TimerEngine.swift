@@ -19,6 +19,11 @@ enum TimerEngine {
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 
+    static func stopwatchDisplay(_ elapsed: TimeInterval) -> String {
+        let seconds = min(maximumDuration, max(0, Int(elapsed.rounded(.down))))
+        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
     static func spokenDuration(_ remaining: TimeInterval) -> String {
         let seconds = max(0, Int(ceil(remaining)))
         let minutes = seconds / 60

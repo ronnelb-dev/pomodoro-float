@@ -23,7 +23,8 @@ enum TimerWindowLayout {
         let spacing: CGFloat = compact ? 6 : 12
         let verticalPadding: CGFloat = compact ? 12 : 20
         let fixedHeight: CGFloat = 30 + 13 + 20 + (compact ? 49 : 56)
-            + (compact ? 47 : 52) + 12 + spacing * 8 + verticalPadding * 2
+            + (compact ? 36 : 44) + (compact ? 47 : 52) + 12
+            + spacing * 9 + verticalPadding * 2
             + CGFloat(max(0, transientRowCount)) * 15
         let availableDisplayHeight = max(160, size.height - fixedHeight)
         let displayHeight = expandsDigitalDisplay

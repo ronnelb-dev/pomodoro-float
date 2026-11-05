@@ -7,10 +7,12 @@ struct CubeTimerApp: App {
     @StateObject private var timer = TimerModel()
     @StateObject private var appearance = AppearanceModel()
     @State private var showingSettings = false
+    @State private var showingCustomCountdown = false
 
     var body: some Scene {
         WindowGroup("Pomodoro Float") {
-            TimerView(showingSettings: $showingSettings)
+            TimerView(showingSettings: $showingSettings,
+                      showingCustomCountdown: $showingCustomCountdown)
                 .environmentObject(timer)
                 .environmentObject(appearance)
                 .background(WindowConfigurator(alwaysOnTop: timer.alwaysOnTop,
@@ -60,6 +62,9 @@ struct CubeTimerApp: App {
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")),
                                       modifiers: .command)
                 }
+                Divider()
+                Button("Countdown…") { showingCustomCountdown = true }
+                Button("Start Stopwatch") { timer.startStopwatch() }
                 Divider()
                 Button("Settings…") { showingSettings = true }
                     .keyboardShortcut(",", modifiers: .command)
@@ -706,6 +711,7 @@ private struct TimerView: View {
     @EnvironmentObject private var timer: TimerModel
     @EnvironmentObject private var appearance: AppearanceModel
     @Binding var showingSettings: Bool
+    @Binding var showingCustomCountdown: Bool
     @State private var cubeSelectionTick = 0
     @State private var returnToDisplayTick = 0
     @State private var activeWindow: NSWindow?
@@ -725,6 +731,7 @@ private struct TimerView: View {
     private var countdownActionName: String {
         if timer.isRunning { return "Pause" }
         if timer.isPaused { return "Resume" }
+        if timer.sessionKind == .stopwatch { return timer.isComplete ? "Restart" : "Start" }
         if timer.isComplete && timer.flowEnabled {
             return "Start \(timer.nextPhaseName?.lowercased() ?? "next phase")"
         }
@@ -732,12 +739,14 @@ private struct TimerView: View {
     }
 
     private var digitalPhaseLabel: String {
+        if timer.sessionKind == .stopwatch { return "Stopwatch" }
+        if timer.sessionKind == .customCountdown { return "Countdown" }
         if timer.flowEnabled { return timer.phase.displayName }
         return timer.hasSuspendedPomodoro ? "Pomodoro Paused" : "Countdown"
     }
 
     private var digitalStatusLabel: String {
-        timer.isComplete ? "DONE" : timer.isRunning ? "RUNNING" :
+        timer.isComplete ? (timer.sessionKind == .stopwatch ? "STOPPED" : "DONE") : timer.isRunning ? "RUNNING" :
             timer.isPaused ? "PAUSED" : "READY"
     }
 
@@ -781,6 +790,15 @@ private struct TimerView: View {
             SettingsView()
                 .environmentObject(timer)
                 .environmentObject(appearance)
+        }
+        .popover(isPresented: $showingCustomCountdown, arrowEdge: .bottom) {
+            CustomCountdownPopover(initialSeconds: timer.sessionKind == .stopwatch
+                ? timer.presetSeconds[timer.selectedPreset] : Int(timer.total),
+                onStart: { seconds in
+                    showingCustomCountdown = false
+                    timer.startCustomCountdown(seconds: seconds)
+                },
+                onCancel: { showingCustomCountdown = false })
         }
         .onReceive(NotificationCenter.default.publisher(for: .cubeTimerWindowModeDidChange),
                    perform: handleWindowModeDidChange)
@@ -832,7 +850,7 @@ private struct TimerView: View {
                     .ignoresSafeArea()
 
                 VStack(spacing: metrics.spacing) {
-                    header
+                    header(narrow: geometry.size.width < 390)
                         .frame(maxWidth: TimerWindowLayout.standardContentWidth)
                     Spacer(minLength: 0)
                     status
@@ -844,10 +862,14 @@ private struct TimerView: View {
                             .frame(width: digitalPanelWidth,
                                    height: metrics.displayHeight)
                     }
-                    progress
-                        .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                    if timer.sessionKind != .stopwatch {
+                        progress
+                            .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                    }
                     Spacer(minLength: 0)
                     presetPicker(compact: metrics.compact)
+                        .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                    timingModeButtons(compact: metrics.compact)
                         .frame(maxWidth: TimerWindowLayout.standardContentWidth)
                     controls(compact: metrics.compact)
                         .frame(maxWidth: TimerWindowLayout.standardContentWidth)
@@ -942,7 +964,7 @@ private struct TimerView: View {
                             .padding(12)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(countdownActionName) countdown")
+                    .accessibilityLabel("\(countdownActionName) \(timer.sessionKind == .stopwatch ? "stopwatch" : "countdown")")
                     .accessibilityValue(timer.accessibilityValue)
                     .help("Click to \(countdownActionName.lowercased()) timer")
                     .contextMenu { digitalFloatingContextMenu }
@@ -959,7 +981,7 @@ private struct TimerView: View {
                 .buttonStyle(.plain)
                 .opacity(isHoveringFloatingAction ? 1 : 0)
                 .allowsHitTesting(isHoveringFloatingAction)
-                .accessibilityLabel("\(countdownActionName) countdown")
+                .accessibilityLabel("\(countdownActionName) \(timer.sessionKind == .stopwatch ? "stopwatch" : "countdown")")
                 .accessibilityValue(timer.accessibilityValue)
                 .help("\(countdownActionName) countdown")
                 .frame(maxWidth: .infinity, maxHeight: .infinity,
@@ -1049,6 +1071,7 @@ private struct TimerView: View {
                           focusProgress: digitalFocusProgress,
                           sessionNotice: compact ? timer.pendingModeDescription : nil,
                           progress: timer.progress,
+                          showsProgress: timer.sessionKind != .stopwatch,
                           accent: accent,
                           colors: colors,
                           compact: compact)
@@ -1134,6 +1157,8 @@ private struct TimerView: View {
                 }
             }
         }
+        Button("Countdown…") { showingCustomCountdown = true }
+        Button("Start Stopwatch") { timer.startStopwatch() }
         if let next = timer.nextPhaseName {
             Button("Start \(next)") { timer.startNextPhase() }
         } else {
@@ -1165,16 +1190,17 @@ private struct TimerView: View {
     }
 
     private func borderlessReadout(size: CGFloat) -> some View {
-        let state = timer.isComplete ? "DONE" : timer.isRunning ? "RUNNING" :
+        let state = timer.isComplete ? (timer.sessionKind == .stopwatch ? "STOPPED" : "DONE") : timer.isRunning ? "RUNNING" :
             timer.isPaused ? "PAUSED" : "READY"
         let label = timer.flowEnabled
             ? "\(timer.phase.displayLabel) · \(timer.focusProgressLabel) · \(state)"
-            : timer.hasSuspendedPomodoro ? "ONE-OFF · \(timer.focusProgressLabel) · \(state)"
-            : state
+            : "\(timer.sessionKind == .stopwatch ? "STOPWATCH" : timer.sessionKind == .customCountdown ? "COUNTDOWN" : timer.hasSuspendedPomodoro ? "ONE-OFF" : "TIMER") · \(state)"
         let compact = size < 320
         let visibleLabel = compact
             ? (timer.flowEnabled ? "\(timer.phase.displayLabel) · \(state)"
-               : timer.hasSuspendedPomodoro ? "ONE-OFF · \(state)" : state)
+               : timer.sessionKind == .stopwatch ? "STOPWATCH · \(state)" :
+                 timer.sessionKind == .customCountdown ? "COUNTDOWN · \(state)" :
+                 timer.hasSuspendedPomodoro ? "ONE-OFF · \(state)" : state)
             : label
         return HStack(spacing: 4) {
             Group {
@@ -1241,9 +1267,9 @@ private struct TimerView: View {
                             in: RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
-        .help("Return to Timer Face · keeps countdown")
+        .help("Return to Timer Face · keeps current session")
         .accessibilityLabel("Return to Timer Face")
-        .accessibilityHint("Rotates the cube back without changing the countdown")
+        .accessibilityHint("Rotates the cube back without changing the current session")
     }
 
     private func undoToast(label: String, borderless: Bool) -> some View {
@@ -1273,7 +1299,7 @@ private struct TimerView: View {
             Button {
                 timer.startOrPause()
             } label: {
-                Text("\(countdownActionName) countdown")
+                Text("\(countdownActionName) \(timer.sessionKind == .stopwatch ? "stopwatch" : "countdown")")
             }
             .accessibilityValue(timer.accessibilityValue)
             .accessibilityHint("Starts, pauses, or resumes without resetting paused time")
@@ -1303,7 +1329,7 @@ private struct TimerView: View {
 
             if timer.borderlessWindow && !displayFaceReadable {
                 Button("Return to Timer Face") { returnToTimerFace() }
-                    .accessibilityHint("Rotates the cube back without changing the countdown")
+                    .accessibilityHint("Rotates the cube back without changing the current session")
             }
 
             if timer.borderlessWindow && timer.hasSuspendedPomodoro {
@@ -1334,19 +1360,21 @@ private struct TimerView: View {
         }
     }
 
-    private var header: some View {
+    private func header(narrow: Bool) -> some View {
         HStack(spacing: 9) {
             Image(systemName: timer.displayStyle == .cube ? "cube.fill" : "timer")
                 .font(.system(size: 19, weight: .light))
                 .foregroundStyle(accent)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(timer.displayStyle == .cube ? "CUBE" : "DIGITAL")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .tracking(3)
-                Text("TIMER")
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .tracking(3.5)
-                    .foregroundStyle(colors.secondary)
+            if !narrow {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(timer.displayStyle == .cube ? "CUBE" : "DIGITAL")
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .tracking(3)
+                    Text("TIMER")
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .tracking(3.5)
+                        .foregroundStyle(colors.secondary)
+                }
             }
             if !isInNativeFullscreen && !timer.isPreparingDigitalFullscreen {
                 Picker("Timer design", selection: $timer.displayStyle) {
@@ -1395,7 +1423,9 @@ private struct TimerView: View {
             Circle()
                 .fill(timer.isRunning ? accent : colors.secondary)
                 .frame(width: 6, height: 6)
-            Text(timer.hasSuspendedPomodoro ? "ONE-OFF / POMODORO PAUSED · \(timer.focusProgressLabel)" : timer.flowEnabled
+            Text(timer.sessionKind == .stopwatch ? "STOPWATCH / \(digitalStatusLabel)" :
+                 timer.sessionKind == .customCountdown ? "COUNTDOWN / \(digitalStatusLabel)" :
+                 timer.hasSuspendedPomodoro ? "ONE-OFF / POMODORO PAUSED · \(timer.focusProgressLabel)" : timer.flowEnabled
                  ? "POMODORO / \(timer.phase.displayLabel) · \(timer.focusProgressLabel)\(timer.isComplete ? " COMPLETE" : "")"
                  : "COUNTDOWN / \(timer.isRunning ? "RUNNING" : timer.isPaused ? "PAUSED" : timer.isComplete ? "COMPLETE" : "READY")")
                 .lineLimit(1)
@@ -1405,7 +1435,7 @@ private struct TimerView: View {
                 Text(timer.timeLabel)
                     .foregroundStyle(colors.text)
                     .monospacedDigit()
-                    .accessibilityLabel("Time remaining \(timer.timeLabel)")
+                    .accessibilityLabel("\(timer.sessionKind == .stopwatch ? "Time elapsed" : "Time remaining") \(timer.timeLabel)")
             }
             if !displayFaceReadable {
                 returnToTimerFaceButton
@@ -1455,9 +1485,10 @@ private struct TimerView: View {
                       presetSeconds: timer.presetSeconds,
                       timeLabel: timer.timeLabel,
                       progress: timer.progress,
+                      showsCountdownProgress: timer.sessionKind != .stopwatch,
                       appearance: appearance.value,
                       automaticReadableDigits: appearance.automaticReadableDigits,
-                      completed: timer.isComplete,
+                      completed: timer.sessionKind != .stopwatch && timer.isComplete,
                       interactive: true,
                       selectionTick: cubeSelectionTick,
                       returnToDisplayTick: returnToDisplayTick,
@@ -1472,6 +1503,8 @@ private struct TimerView: View {
                       displayStyle: timer.displayStyle,
                       onDisplayClick: { timer.startOrPause() },
                       onOpenSettings: { showingSettings = true },
+                      onOpenCustomCountdown: { showingCustomCountdown = true },
+                      onStartStopwatch: { timer.startStopwatch() },
                       onShowFloatingHelp: showFloatingHelp,
                       onToggleBorderless: {
                           timer.setBorderlessWindow(!timer.borderlessWindow)
@@ -1479,10 +1512,12 @@ private struct TimerView: View {
                       onToggleAlwaysOnTop: { timer.alwaysOnTop.toggle() },
                       onReset: { timer.reset() },
                       onSelectDisplayStyle: { timer.displayStyle = $0 },
-                      focusMarks: timer.pomodoroModeEnabled
+                      focusMarks: timer.sessionKind != .stopwatch && timer.pomodoroModeEnabled
                           ? CubeFocusProgress(completed: timer.focusesInCycle,
                                               target: timer.cycleTarget) : nil,
-                      sessionLabel: timer.flowEnabled ? timer.phase.displayLabel : nil,
+                      sessionLabel: timer.sessionKind == .stopwatch ? "STOPWATCH" :
+                          timer.sessionKind == .customCountdown ? "COUNTDOWN" :
+                          timer.flowEnabled ? timer.phase.displayLabel : nil,
                       nextPhaseName: timer.nextPhaseName,
                       onStartNextPhase: timer.nextPhaseName != nil
                           ? { timer.startNextPhase() } : nil,
@@ -1525,7 +1560,8 @@ private struct TimerView: View {
     private func presetPicker(compact: Bool) -> some View {
         HStack(spacing: compact ? 7 : 10) {
             ForEach(TimerModel.defaultDurations.indices, id: \.self) { index in
-                let selected = timer.selectedPreset == index &&
+                let selected = timer.sessionKind == .presetCountdown &&
+                    timer.selectedPreset == index &&
                     !(timer.flowEnabled && timer.phase == .longBreak)
                 Button {
                     if !selected { timer.selectPreset(index) }
@@ -1570,6 +1606,48 @@ private struct TimerView: View {
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
+    }
+
+    private func timingModeButtons(compact: Bool) -> some View {
+        HStack(spacing: 10) {
+            timingModeButton("COUNTDOWN", systemImage: "timer",
+                             selected: timer.sessionKind == .customCountdown,
+                             compact: compact,
+                             hint: "Opens time entry without interrupting the current timer") {
+                showingCustomCountdown = true
+            }
+            timingModeButton("STOPWATCH", systemImage: "stopwatch",
+                             selected: timer.sessionKind == .stopwatch,
+                             compact: compact,
+                             hint: "Starts the stopwatch immediately; Undo can restore an active timer") {
+                timer.startStopwatch()
+            }
+        }
+    }
+
+    private func timingModeButton(_ title: String, systemImage: String,
+                                  selected: Bool, compact: Bool, hint: String,
+                                  action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity)
+                .frame(height: compact ? 36 : 44)
+                .foregroundStyle(selected ? accent : colors.text)
+                .background(selected ? accent.opacity(0.12) : colors.panel,
+                            in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(selected ? accent.opacity(0.8) : colors.edge)
+                }
+        }
+        .buttonStyle(.plain)
+        .help(hint)
+        .accessibilityLabel(title)
+        .accessibilityHint(hint)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func controls(compact: Bool) -> some View {
@@ -1641,6 +1719,66 @@ private struct SecondaryButtonStyle: ButtonStyle {
             .foregroundStyle(colors.text)
             .background(colors.panel, in: RoundedRectangle(cornerRadius: 11))
             .overlay { RoundedRectangle(cornerRadius: 11).strokeBorder(colors.edge) }
+    }
+}
+
+enum CustomCountdownInput {
+    static func duration(minutes: String, seconds: String) -> Int? {
+        guard !minutes.isEmpty, !seconds.isEmpty,
+              minutes.allSatisfy({ $0.isASCII && $0.isNumber }),
+              seconds.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let minuteValue = Int(minutes), let secondValue = Int(seconds),
+              (0...99).contains(minuteValue), (0...59).contains(secondValue) else {
+            return nil
+        }
+        let total = minuteValue * 60 + secondValue
+        return (TimerEngine.minimumDuration...TimerEngine.maximumDuration).contains(total)
+            ? total : nil
+    }
+}
+
+private struct CustomCountdownPopover: View {
+    let initialSeconds: Int
+    let onStart: (Int) -> Void
+    let onCancel: () -> Void
+    @State private var minutes = ""
+    @State private var seconds = ""
+
+    private var duration: Int? { CustomCountdownInput.duration(minutes: minutes, seconds: seconds) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("COUNTDOWN")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+            HStack(spacing: 10) {
+                TextField("Minutes", text: $minutes)
+                    .accessibilityLabel("Minutes")
+                Text(":")
+                TextField("Seconds", text: $seconds)
+                    .accessibilityLabel("Seconds")
+            }
+            .font(.system(size: 22, weight: .semibold, design: .monospaced))
+            .textFieldStyle(.roundedBorder)
+            Text("Enter 00:01–99:59. Saved presets stay unchanged.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Cancel", action: onCancel)
+                Spacer()
+                Button("Start") {
+                    if let duration { onStart(duration) }
+                }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(duration == nil)
+            }
+        }
+        .padding(18)
+        .frame(width: 280)
+        .onAppear {
+            let initial = TimerEngine.clampedDuration(initialSeconds)
+            minutes = String(format: "%02d", initial / 60)
+            seconds = String(format: "%02d", initial % 60)
+        }
     }
 }
 
@@ -1871,6 +2009,7 @@ private struct SettingsView: View {
                           presetSeconds: timer.presetSeconds,
                           timeLabel: timer.timeLabel,
                           progress: timer.progress,
+                          showsCountdownProgress: timer.sessionKind != .stopwatch,
                           appearance: appearance.value,
                           automaticReadableDigits: appearance.automaticReadableDigits,
                           completed: false, interactive: false,

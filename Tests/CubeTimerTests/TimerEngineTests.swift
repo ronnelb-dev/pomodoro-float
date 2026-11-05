@@ -16,6 +16,21 @@ final class TimerEngineTests: XCTestCase {
         XCTAssertEqual(TimerEngine.display(5_999), "99:59")
     }
 
+    func testStopwatchDisplayRoundsDownElapsedTime() {
+        XCTAssertEqual(TimerEngine.stopwatchDisplay(0.9), "00:00")
+        XCTAssertEqual(TimerEngine.stopwatchDisplay(60.9), "01:00")
+        XCTAssertEqual(TimerEngine.stopwatchDisplay(5_999), "99:59")
+    }
+
+    func testCustomCountdownInputAcceptsOnlySupportedDurations() {
+        XCTAssertEqual(CustomCountdownInput.duration(minutes: "00", seconds: "01"), 1)
+        XCTAssertEqual(CustomCountdownInput.duration(minutes: "99", seconds: "59"), 5_999)
+        XCTAssertNil(CustomCountdownInput.duration(minutes: "00", seconds: "00"))
+        XCTAssertNil(CustomCountdownInput.duration(minutes: "100", seconds: "00"))
+        XCTAssertNil(CustomCountdownInput.duration(minutes: "01", seconds: "60"))
+        XCTAssertNil(CustomCountdownInput.duration(minutes: "1x", seconds: "30"))
+    }
+
     func testSpokenDurationMatchesDisplayedSeconds() {
         XCTAssertEqual(TimerEngine.spokenDuration(0), "0 seconds")
         XCTAssertEqual(TimerEngine.spokenDuration(0.1), "1 second")

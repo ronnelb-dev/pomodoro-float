@@ -5,13 +5,13 @@ import XCTest
 final class TimerWindowLayoutTests: XCTestCase {
     func testMinimumStandardSizeFitsCompactLayoutWithAllTransientRows() {
         let metrics = TimerWindowLayout.standardMetrics(
-            size: NSSize(width: TimerWindowLayout.standardMinimumSize.width, height: 462),
+            size: TimerWindowLayout.standardMinimumSize,
             transientRowCount: 3)
 
         XCTAssertTrue(metrics.compact)
         XCTAssertEqual(metrics.spacing, 6)
         XCTAssertEqual(metrics.verticalPadding, 12)
-        XCTAssertEqual(metrics.displayHeight, 174)
+        XCTAssertEqual(metrics.displayHeight, 160)
         XCTAssertLessThanOrEqual(metrics.displayHeight, 510)
     }
 

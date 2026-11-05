@@ -72,7 +72,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(restored.isRunning)
         XCTAssertEqual(restored.remaining, 210, accuracy: 0.01)
         XCTAssertEqual(notifications.pending!.seconds, 210, accuracy: 0.01)
-        XCTAssertEqual(saved(in: defaults)?.version, 5)
+        XCTAssertEqual(saved(in: defaults)?.version, 6)
     }
 
     func testDifferentBootUsesWallDeadlineFallback() {
@@ -102,7 +102,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         XCTAssertEqual(model.remaining, 180, accuracy: 0.01)
-        XCTAssertEqual(saved(in: defaults)?.version, 5)
+        XCTAssertEqual(saved(in: defaults)?.version, 6)
         XCTAssertEqual(saved(in: defaults)?.bootSessionID, source.bootSessionID)
         XCTAssertNotNil(saved(in: defaults)?.continuousDeadline)
     }
@@ -121,7 +121,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(model.pomodoroModeEnabled)
         XCTAssertEqual(model.phase, .breakTime)
         XCTAssertEqual(model.remaining, 123)
-        XCTAssertEqual(saved(in: defaults)?.version, 5)
+        XCTAssertEqual(saved(in: defaults)?.version, 6)
         model.reset()
     }
 
@@ -850,7 +850,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(restored.cycleTarget, 4)
         XCTAssertEqual(restored.requestedCycleTarget, 8)
         XCTAssertEqual(restored.focusProgressLabel, "1/4")
-        XCTAssertEqual(saved(in: defaults)?.version, 5)
+        XCTAssertEqual(saved(in: defaults)?.version, 6)
         XCTAssertEqual(saved(in: defaults)?.cycleTarget, 4)
         restored.start()
         for _ in 2...4 {
@@ -1019,7 +1019,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(first.isComplete)
         XCTAssertEqual(first.focusesInCycle, 4)
         XCTAssertEqual(first.completedFocusTotal, 4)
-        XCTAssertEqual(saved(in: defaults)?.version, 5)
+        XCTAssertEqual(saved(in: defaults)?.version, 6)
         let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertEqual(reopened.completedFocusTotal, 4)
@@ -1201,7 +1201,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(model.isComplete)
         XCTAssertEqual(model.completedFocusTotal, 1)
         XCTAssertEqual(model.focusesInCycle, 1)
-        XCTAssertEqual(saved(in: defaults)?.version, 5)
+        XCTAssertEqual(saved(in: defaults)?.version, 6)
         let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false, now: now)
         XCTAssertEqual(reopened.completedFocusTotal, 1)
         reopened.reset()
@@ -2259,6 +2259,186 @@ final class TimerSessionCoordinatorTests: XCTestCase {
                                notificationClient: notifications, soundClient: sound,
                                appIsActive: { true })
         return (model, defaults, boundary, notifications, sound)
+    }
+
+    func testCustomCountdownKeepsPresetsAndRestartsAfterCompletion() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ManualTimerTimeSource()
+        let notifications = RecordingNotifications()
+        let sound = RecordingSound()
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
+                                             notificationClient: notifications,
+                                             soundClient: sound, timeSource: source,
+                                             appIsActive: { true })
+        let presets = model.presetSeconds
+        model.startCustomCountdown(seconds: 91)
+        XCTAssertEqual(model.sessionKind, .customCountdown)
+        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(model.remaining, 91)
+        XCTAssertEqual(notifications.pending?.seconds ?? 0, 91, accuracy: 0.01)
+        XCTAssertEqual(model.presetSeconds, presets)
+        XCTAssertNil(defaults.object(forKey: "presetSeconds.0"))
+
+        source.advance(91)
+        model.refresh()
+        XCTAssertTrue(model.isComplete)
+        XCTAssertEqual(sound.playCount, 1)
+        model.start()
+        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(model.sessionKind, .customCountdown)
+        XCTAssertEqual(model.remaining, 91)
+        model.reset()
+        XCTAssertEqual(model.remaining, 91)
+        XCTAssertEqual(model.presetSeconds, presets)
+    }
+
+    func testCustomCountdownRejectsOutOfRangeWithoutChangingSession() {
+        let model = makeModel()
+        let before = model.sessionSnapshot
+        model.startCustomCountdown(seconds: 0)
+        model.startCustomCountdown(seconds: TimerEngine.maximumDuration + 1)
+        XCTAssertEqual(model.sessionSnapshot, before)
+    }
+
+    func testStopwatchCountsUpPausesAndStopsSilentlyAtLimit() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ManualTimerTimeSource()
+        let notifications = RecordingNotifications()
+        let sound = RecordingSound()
+        let model = TimerSessionCoordinator(defaults: defaults, now: source.wallNow,
+                                             notificationClient: notifications,
+                                             soundClient: sound, timeSource: source)
+        model.startStopwatch()
+        XCTAssertEqual(model.sessionKind, .stopwatch)
+        XCTAssertEqual(model.timeLabel, "00:00")
+        XCTAssertNil(notifications.pending)
+        source.advance(45)
+        model.refresh()
+        XCTAssertEqual(model.timeLabel, "00:45")
+        model.pause()
+        source.advance(20)
+        model.refresh()
+        XCTAssertEqual(model.timeLabel, "00:45")
+        model.start()
+        source.advance(TimeInterval(TimerEngine.maximumDuration - 45))
+        model.refresh()
+        XCTAssertEqual(model.timeLabel, "99:59")
+        XCTAssertTrue(model.isComplete)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertNil(notifications.pending)
+        XCTAssertEqual(sound.playCount, 0)
+        model.reset()
+        XCTAssertEqual(model.timeLabel, "00:00")
+        XCTAssertFalse(model.isComplete)
+    }
+
+    func testNewModesSuspendPomodoroAndSupportUndoAndResume() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "flowEnabled")
+        let source = ManualTimerTimeSource()
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                             now: source.wallNow, timeSource: source)
+        model.start()
+        source.advance(10)
+        model.startStopwatch()
+        XCTAssertEqual(model.suspendedPomodoro?.remaining ?? 0, 1490, accuracy: 0.01)
+        XCTAssertFalse(model.flowEnabled)
+        XCTAssertTrue(model.undoPresetChange())
+        XCTAssertEqual(model.sessionKind, .presetCountdown)
+        XCTAssertTrue(model.flowEnabled)
+        XCTAssertEqual(model.remaining, 1490, accuracy: 0.01)
+
+        model.startCustomCountdown(seconds: 75)
+        XCTAssertEqual(model.sessionKind, .customCountdown)
+        XCTAssertNotNil(model.suspendedPomodoro)
+        XCTAssertTrue(model.resumePomodoro())
+        XCTAssertEqual(model.sessionKind, .presetCountdown)
+        XCTAssertTrue(model.flowEnabled)
+        XCTAssertEqual(model.remaining, 1490, accuracy: 0.01)
+    }
+
+    func testRunningStopwatchRestoresAcrossRelaunchAndWallClockJump() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ManualTimerTimeSource()
+        let first = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                             now: source.wallNow, timeSource: source)
+        first.startStopwatch()
+        source.advance(90)
+        source.jumpWall(3600)
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                                now: source.wallNow, timeSource: source)
+        XCTAssertEqual(restored.sessionKind, .stopwatch)
+        XCTAssertTrue(restored.isRunning)
+        XCTAssertEqual(restored.remaining, 90, accuracy: 0.01)
+        source.advance(10)
+        restored.refresh()
+        XCTAssertEqual(restored.remaining, 100, accuracy: 0.01)
+        restored.pause()
+        let paused = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                              now: source.wallNow, timeSource: source)
+        XCTAssertTrue(paused.isPaused)
+        XCTAssertEqual(paused.remaining, 100, accuracy: 0.01)
+    }
+
+    func testStopwatchUsesWallDeadlineAfterRebootAndStopsAtLimit() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let firstClock = ManualTimerTimeSource()
+        let first = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                             now: firstClock.wallNow, timeSource: firstClock)
+        first.startStopwatch()
+        let nextBoot = ManualTimerTimeSource(
+            wallNow: firstClock.wallNow.addingTimeInterval(45),
+            continuousNow: 20, bootSessionID: "boot-B")
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                                now: nextBoot.wallNow, timeSource: nextBoot)
+        XCTAssertTrue(restored.isRunning)
+        XCTAssertEqual(restored.remaining, 45, accuracy: 0.01)
+
+        nextBoot.advance(TimeInterval(TimerEngine.maximumDuration))
+        restored.refresh()
+        XCTAssertEqual(restored.timeLabel, "99:59")
+        XCTAssertTrue(restored.isComplete)
+        XCTAssertNil(restored.alertText)
+    }
+
+    func testRunningCustomCountdownRestoresAndKeepsItsOwnDuration() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ManualTimerTimeSource()
+        let first = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                             now: source.wallNow, timeSource: source)
+        first.startCustomCountdown(seconds: 125)
+        source.advance(30)
+        let restored = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                                now: source.wallNow, timeSource: source)
+        XCTAssertEqual(restored.sessionKind, .customCountdown)
+        XCTAssertEqual(restored.total, 125)
+        XCTAssertEqual(restored.remaining, 95, accuracy: 0.01)
+        restored.reset()
+        XCTAssertEqual(restored.remaining, 125)
+        XCTAssertEqual(restored.presetSeconds[0], 300)
+    }
+
+    func testReplacingRunningStopwatchCanUndoWithElapsedTimePreserved() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let source = ManualTimerTimeSource()
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                                             now: source.wallNow, timeSource: source)
+        model.startStopwatch()
+        source.advance(12)
+        model.startCustomCountdown(seconds: 60)
+        XCTAssertEqual(model.undoPresetLabel, "Stopwatch")
+        source.advance(2)
+        XCTAssertTrue(model.undoPresetChange())
+        XCTAssertEqual(model.sessionKind, .stopwatch)
+        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(model.remaining, 14, accuracy: 0.01)
     }
 
     private func isolatedDefaults() -> (UserDefaults, String) {

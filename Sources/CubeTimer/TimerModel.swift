@@ -28,6 +28,12 @@ enum SessionPhase: String, Codable {
     var displayLabel: String { displayName.uppercased() }
 }
 
+enum TimerSessionKind: String, Codable {
+    case presetCountdown
+    case customCountdown
+    case stopwatch
+}
+
 extension Notification.Name {
     static let cubeTimerWillChangeWindowMode = Notification.Name("CubeTimerWillChangeWindowMode")
     static let cubeTimerWindowModeDidChange = Notification.Name("CubeTimerWindowModeDidChange")
@@ -75,6 +81,7 @@ struct SavedTimerSession: Codable {
     var focusesInCycle: Int? = nil
     var completedFocusTotal: Int? = nil
     var cycleTarget: Int? = nil
+    var sessionKind: TimerSessionKind? = nil
 }
 
 struct SuspendedPomodoroSession: Codable, Equatable {
@@ -148,6 +155,7 @@ final class TimerModel: ObservableObject {
     @Published private(set) var preferences: TimerSessionPreferences
 
     var presetSeconds: [Int] { preferences.presetSeconds }
+    var sessionKind: TimerSessionKind { sessionSnapshot.sessionKind }
     var selectedPreset: Int { sessionSnapshot.selectedPreset }
     var remaining: TimeInterval { sessionSnapshot.remaining }
     var total: TimeInterval { sessionSnapshot.total }
@@ -166,8 +174,9 @@ final class TimerModel: ObservableObject {
     var requestedCycleTarget: Int { preferences.requestedCycleTarget }
     var alertText: String? { sessionSnapshot.alertText }
     var undoPresetLabel: String? { sessionSnapshot.undoPresetLabel }
-    var progress: Double { TimerEngine.progress(remaining: remaining, total: total) }
-    var timeLabel: String { TimerEngine.display(remaining) }
+    var progress: Double { sessionKind == .stopwatch ? 0 : TimerEngine.progress(remaining: remaining, total: total) }
+    var timeLabel: String { sessionKind == .stopwatch ?
+        TimerEngine.stopwatchDisplay(remaining) : TimerEngine.display(remaining) }
     var requestedFlowEnabled: Bool { pendingFlowEnabled ?? pomodoroModeEnabled }
     var hasSuspendedPomodoro: Bool { suspendedPomodoro != nil }
     var longBreakDue: Bool { focusesInCycle >= cycleTarget }
@@ -190,13 +199,18 @@ final class TimerModel: ObservableObject {
     }
     var accessibilityValue: String {
         let state = isComplete ? "Complete" : isRunning ? "Running" : isPaused ? "Paused" : "Ready"
-        let session = flowEnabled
+        let session = sessionKind == .stopwatch
+            ? "Stopwatch, \(TimerEngine.spokenDuration(remaining.rounded(.down))) elapsed"
+            : sessionKind == .customCountdown
+            ? "Countdown"
+            : flowEnabled
             ? "\(phase.displayName) session, \(phase == .longBreak ? TimerEngine.spokenDuration(total) : Self.spokenPresetName(selectedPreset))"
             : "\(Self.spokenPresetName(selectedPreset))\(hasSuspendedPomodoro ? ", Pomodoro paused" : "")"
         let count = pomodoroModeEnabled
             ? ", \(focusesInCycle) of \(cycleTarget) focuses toward long break, \(completedFocusTotal) completed focuses total"
             : ""
-        return "\(session), \(state), \(TimerEngine.spokenDuration(remaining)) remaining\(count)"
+        return sessionKind == .stopwatch ? "\(session), \(state)\(count)" :
+            "\(session), \(state), \(TimerEngine.spokenDuration(remaining)) remaining\(count)"
     }
 
     private let coordinator: TimerSessionCoordinator
@@ -269,6 +283,8 @@ final class TimerModel: ObservableObject {
     }
 
     func selectPreset(_ index: Int) { _ = send(.selectPreset(index)) }
+    func startCustomCountdown(seconds: Int) { _ = send(.startCustomCountdown(seconds)) }
+    func startStopwatch() { _ = send(.startStopwatch) }
     func presetBecomesOneOff(_ index: Int) -> Bool {
         coordinator.presetBecomesOneOff(index)
     }
