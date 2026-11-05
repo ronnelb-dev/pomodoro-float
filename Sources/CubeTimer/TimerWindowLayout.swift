@@ -32,13 +32,22 @@ enum DeskClockLayout {
 }
 
 enum TimerWindowLayout {
-    static let standardMinimumSize = NSSize(width: 350, height: 490)
+    static let standardMinimumSize = NSSize(width: 420, height: 560)
     static let standardMaximumSize = NSSize(width: 850, height: 1_000)
     static let floatingMinimumSide: CGFloat = 240
     static let floatingMaximumSide: CGFloat = 850
     static let standardContentWidth: CGFloat = 610
     static let digitalPanelMaximumWidth: CGFloat = 1_200
+    static let headerPickerRegularWidth: CGFloat = 126
+    static let headerPickerMinimumWidth: CGFloat = 108
     private static let expandedPanelWidthFraction: CGFloat = 0.85
+
+    static func headerPickerWidth(availableWidth: CGFloat, compact: Bool) -> CGFloat {
+        let availableWidth = max(0, availableWidth)
+        let target = compact ? availableWidth - 180 : headerPickerRegularWidth
+        return min(headerPickerRegularWidth,
+                   max(headerPickerMinimumWidth, target))
+    }
 
     static func standardMetrics(size: NSSize, transientRowCount: Int = 0,
                                 expandsDigitalDisplay: Bool = false)
@@ -66,6 +75,10 @@ enum TimerWindowLayout {
                    max(standardContentWidth, availableWidth * expandedPanelWidthFraction))
     }
 
+    static func standardClockPanelWidth(availableWidth: CGFloat) -> CGFloat {
+        min(standardContentWidth, max(0, availableWidth))
+    }
+
     static func resizedFloatingFrame(start: NSRect, horizontalDelta: CGFloat,
                                      verticalDelta: CGFloat,
                                      visibleFrame: NSRect?) -> NSRect {
@@ -84,6 +97,11 @@ enum TimerWindowLayout {
 }
 
 enum StandardWindowPosition {
+    static func isBelowMinimum(_ frame: NSRect) -> Bool {
+        frame.width < TimerWindowLayout.standardMinimumSize.width ||
+            frame.height < TimerWindowLayout.standardMinimumSize.height
+    }
+
     static func restoredFrame(_ saved: NSRect, visibleFrames: [NSRect]) -> NSRect {
         var frame = saved
         let screen = visibleFrames.max {

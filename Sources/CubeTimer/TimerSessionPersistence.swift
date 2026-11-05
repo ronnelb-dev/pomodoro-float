@@ -46,8 +46,6 @@ struct TimerSessionPersistence {
               (2...8).contains(saved.cycleTarget ?? 4),
               (0...(saved.cycleTarget ?? 4)).contains(saved.focusesInCycle ?? 0),
               (saved.completedFocusTotal ?? 0) >= 0,
-              !(saved.activeFlowEnabled ?? defaultFlowEnabled) ||
-                  saved.selectedPreset == saved.phase.presetIndex,
               saved.suspendedPomodoro == nil ||
                   ((saved.pomodoroModeEnabled ?? defaultPomodoroModeEnabled) &&
                    !(saved.activeFlowEnabled ?? defaultFlowEnabled)) else {

@@ -5,6 +5,20 @@ import Foundation
 import UserNotifications
 import Darwin
 
+enum PresetRole: String, CaseIterable, Codable {
+    case shortBreak
+    case focus
+    case general
+
+    var title: String {
+        switch self {
+        case .shortBreak: "Short Break"
+        case .focus: "Focus"
+        case .general: "General"
+        }
+    }
+}
+
 struct SystemTimerTimeSource: TimerTimeSource {
     var wallNow: Date { Date() }
     // CLOCK_MONOTONIC_RAW advances during sleep and ignores wall-clock changes.
@@ -119,13 +133,15 @@ struct TimerSessionUpdate {
 
 @MainActor
 final class TimerSessionCoordinator: ObservableObject {
-    static let presetNames = ["5 MIN", "10 MIN", "25 MIN", "50 MIN", "60 MIN"]
+    static let defaultPresetNames = ["5 MIN", "10 MIN", "25 MIN", "50 MIN", "60 MIN"]
     static let defaultDurations = [300, 600, 1500, 3000, 3600]
     static func spokenPresetName(_ index: Int) -> String {
         "\(defaultDurations[index] / 60)-minute preset"
     }
 
     @Published private(set) var presetSeconds: [Int]
+    @Published private(set) var presetNames: [String]
+    @Published private(set) var presetRoles: [PresetRole]
     @Published private(set) var sessionKind: TimerSessionKind = .presetCountdown
     @Published private(set) var selectedPreset: Int
     @Published private(set) var remaining: TimeInterval
@@ -173,6 +189,17 @@ final class TimerSessionCoordinator: ObservableObject {
     var longBreakDue: Bool { focusesInCycle >= cycleTarget }
     var focusProgressLabel: String { "\(focusesInCycle)/\(cycleTarget)" }
     var cycleTargetChangePending: Bool { cycleTarget != requestedCycleTarget }
+    var focusPresetIndex: Int { presetRoles.firstIndex(of: .focus) ?? 2 }
+    var shortBreakPresetIndex: Int { presetRoles.firstIndex(of: .shortBreak) ?? 0 }
+    private static func defaultRole(for index: Int) -> PresetRole {
+        index == 0 ? .shortBreak : index == 2 ? .focus : .general
+    }
+    private func presetIndex(for phase: SessionPhase) -> Int {
+        phase == .focus ? focusPresetIndex : shortBreakPresetIndex
+    }
+    private func restoredPresetIndex(for phase: SessionPhase, savedIndex: Int) -> Int {
+        flowEnabled && phase != .longBreak ? presetIndex(for: phase) : savedIndex
+    }
     private var upcomingPhase: SessionPhase {
         phase == .focus ? (longBreakDue ? .longBreak : .breakTime) : .focus
     }
@@ -189,7 +216,7 @@ final class TimerSessionCoordinator: ObservableObject {
             ? "Skip Long Break" : "Skip Short Break"
     }
     func presetBecomesOneOff(_ index: Int) -> Bool {
-        flowEnabled && (![0, 2].contains(index) || longBreakDue || phase == .longBreak)
+        flowEnabled && (![focusPresetIndex, shortBreakPresetIndex].contains(index) || longBreakDue || phase == .longBreak)
     }
     var pendingModeDescription: String? {
         guard let pendingFlowEnabled else { return nil }
@@ -202,8 +229,8 @@ final class TimerSessionCoordinator: ObservableObject {
             : sessionKind == .customCountdown
             ? "Countdown"
             : flowEnabled
-            ? "\(phase.displayName) session, \(phase == .longBreak ? TimerEngine.spokenDuration(total) : Self.spokenPresetName(selectedPreset))"
-            : "\(Self.spokenPresetName(selectedPreset))\(hasSuspendedPomodoro ? ", Pomodoro paused" : "")"
+            ? "\(phase.displayName) session, \(phase == .longBreak ? TimerEngine.spokenDuration(total) : presetNames[selectedPreset])"
+            : "\(presetNames[selectedPreset])\(hasSuspendedPomodoro ? ", Pomodoro paused" : "")"
         let count = pomodoroModeEnabled
             ? ", \(focusesInCycle) of \(cycleTarget) focuses toward long break, \(completedFocusTotal) completed focuses total"
             : ""
@@ -254,8 +281,42 @@ final class TimerSessionCoordinator: ObservableObject {
                 ? fallback
                 : TimerEngine.clampedDuration(defaults.integer(forKey: key))
         }
+        let loadedNames = Self.defaultPresetNames.enumerated().map { index, fallback in
+            let stored = defaults.string(forKey: "presetName.\(index)")?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return stored.map { String($0.prefix(32)) }.flatMap { $0.isEmpty ? nil : $0 } ?? fallback
+        }
+        var loadedRoles = Self.defaultDurations.indices.map { index in
+            let fallback = Self.defaultRole(for: index)
+            return defaults.string(forKey: "presetRole.\(index)")
+                .flatMap(PresetRole.init(rawValue:)) ?? fallback
+        }
+        if let focus = loadedRoles.firstIndex(of: .focus) {
+            for index in loadedRoles.indices where index != focus && loadedRoles[index] == .focus {
+                loadedRoles[index] = .general
+            }
+        }
+        if let shortBreak = loadedRoles.firstIndex(of: .shortBreak) {
+            for index in loadedRoles.indices where index != shortBreak && loadedRoles[index] == .shortBreak {
+                loadedRoles[index] = .general
+            }
+        }
+        if !loadedRoles.contains(.focus) {
+            let index = loadedRoles.indices.first { loadedRoles[$0] != .shortBreak } ?? 2
+            loadedRoles[index] = .focus
+        }
+        if !loadedRoles.contains(.shortBreak) {
+            let index = loadedRoles.indices.first { loadedRoles[$0] != .focus } ?? 0
+            loadedRoles[index] = .shortBreak
+        }
+        presetNames = loadedNames
+        presetRoles = loadedRoles
+        for index in loadedRoles.indices {
+            defaults.set(loadedNames[index], forKey: "presetName.\(index)")
+            defaults.set(loadedRoles[index].rawValue, forKey: "presetRole.\(index)")
+        }
         let loadedFlow = defaults.bool(forKey: "flowEnabled")
-        let loadedSelection = loadedFlow ? 2 : min(Self.defaultDurations.count - 1,
+        let loadedSelection = loadedFlow ? (loadedRoles.firstIndex(of: .focus) ?? 2) : min(Self.defaultDurations.count - 1,
                                                    max(0, defaults.integer(forKey: "selectedPreset")))
         presetSeconds = loadedPresets
         longBreakSeconds = defaults.object(forKey: "longBreakSeconds") == nil
@@ -391,8 +452,8 @@ final class TimerSessionCoordinator: ObservableObject {
         if suspendedPomodoro != nil {
             flowEnabled = false
         } else if flowEnabled {
-            if index == 2 { phase = .focus }
-            else if index == 0 { phase = .breakTime }
+            if index == focusPresetIndex { phase = .focus }
+            else if index == shortBreakPresetIndex { phase = .breakTime }
             else { flowEnabled = false }
         }
         total = TimeInterval(presetSeconds[index])
@@ -466,6 +527,65 @@ final class TimerSessionCoordinator: ObservableObject {
             remaining = total
             saveSession()
         }
+    }
+
+    func setPresetName(_ index: Int, name: String) {
+        guard Self.defaultDurations.indices.contains(index) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let value = String(trimmed.prefix(32))
+        presetNames[index] = value
+        defaults.set(value, forKey: "presetName.\(index)")
+    }
+
+    func setPresetRole(_ index: Int, role: PresetRole) {
+        guard Self.defaultDurations.indices.contains(index) else { return }
+        let previousRole = presetRoles[index]
+        guard previousRole != role else { return }
+
+        // Moving a semantic role must leave the old role represented somewhere
+        // else. Prefer a General slot, then the role's default slot.
+        func replacementSlot(for role: PresetRole) -> Int? {
+            guard role != .general else { return nil }
+            let preferred = role == .focus ? 2 : 0
+            if preferred != index, presetRoles[preferred] == .general { return preferred }
+            return presetRoles.indices.first { $0 != index && presetRoles[$0] == .general }
+        }
+
+        if previousRole != .general, let replacement = replacementSlot(for: previousRole) {
+            presetRoles[replacement] = previousRole
+            defaults.set(previousRole.rawValue, forKey: "presetRole.\(replacement)")
+        }
+        if role != .general, let other = presetRoles.firstIndex(of: role), other != index {
+            presetRoles[other] = .general
+            defaults.set(PresetRole.general.rawValue, forKey: "presetRole.\(other)")
+        }
+        presetRoles[index] = role
+        defaults.set(role.rawValue, forKey: "presetRole.\(index)")
+    }
+
+    func savePreset(_ index: Int, seconds: Int, name: String) {
+        guard (TimerEngine.minimumDuration...TimerEngine.maximumDuration).contains(seconds),
+              Self.defaultDurations.indices.contains(index) else { return }
+        setPresetName(index, name: name)
+        setPreset(index, seconds: seconds)
+    }
+
+    func resetPreset(_ index: Int) {
+        guard Self.defaultDurations.indices.contains(index) else { return }
+        setPreset(index, seconds: Self.defaultDurations[index])
+        setPresetName(index, name: Self.defaultPresetNames[index])
+        setPresetRole(index, role: Self.defaultRole(for: index))
+    }
+
+    func resetPresetSettings() {
+        for index in Self.defaultDurations.indices {
+            setPreset(index, seconds: Self.defaultDurations[index])
+            setPresetName(index, name: Self.defaultPresetNames[index])
+            presetRoles[index] = Self.defaultRole(for: index)
+            defaults.set(presetRoles[index].rawValue, forKey: "presetRole.\(index)")
+        }
+        setLongBreak(seconds: 900)
     }
 
     func setLongBreak(seconds: Int) {
@@ -581,7 +701,7 @@ final class TimerSessionCoordinator: ObservableObject {
 
     private func duration(for phase: SessionPhase) -> TimeInterval {
         phase == .longBreak ? TimeInterval(longBreakSeconds) :
-            TimeInterval(presetSeconds[phase.presetIndex])
+            TimeInterval(presetSeconds[presetIndex(for: phase)])
     }
 
     private func recordFocusCompletionIfNeeded() {
@@ -618,7 +738,7 @@ final class TimerSessionCoordinator: ObservableObject {
         if enabled {
             suspendedPomodoro = nil
             phase = longBreakDue ? .longBreak : .focus
-            selectedPreset = phase.presetIndex
+            selectedPreset = presetIndex(for: phase)
             defaults.set(selectedPreset, forKey: "selectedPreset")
         } else {
             suspendedPomodoro = nil
@@ -654,7 +774,7 @@ final class TimerSessionCoordinator: ObservableObject {
         defaults.set(true, forKey: "flowEnabled")
         flowEnabled = true
         phase = suspended.phase
-        selectedPreset = phase.presetIndex
+        selectedPreset = presetIndex(for: phase)
         defaults.set(selectedPreset, forKey: "selectedPreset")
         total = suspended.total
         remaining = suspended.remaining
@@ -694,7 +814,7 @@ final class TimerSessionCoordinator: ObservableObject {
         sessionKind = .presetCountdown
         if phase == .longBreak || longBreakDue { finishLongBreakCycle() }
         phase = .focus
-        selectedPreset = 2
+        selectedPreset = focusPresetIndex
         defaults.set(selectedPreset, forKey: "selectedPreset")
         total = TimeInterval(presetSeconds[selectedPreset])
         remaining = total
@@ -717,7 +837,7 @@ final class TimerSessionCoordinator: ObservableObject {
         } else if isComplete {
             if flowEnabled {
                 phase = upcomingPhase
-                selectedPreset = phase.presetIndex
+                selectedPreset = presetIndex(for: phase)
                 defaults.set(selectedPreset, forKey: "selectedPreset")
             }
             total = flowEnabled ? duration(for: phase) :
@@ -748,7 +868,7 @@ final class TimerSessionCoordinator: ObservableObject {
         } else if sessionKind == .customCountdown {
             announce("Countdown started. \(TimerEngine.spokenDuration(remaining)) remaining.")
         } else {
-            announce("\(Self.spokenPresetName(selectedPreset)) started. \(TimerEngine.spokenDuration(remaining)) remaining.")
+            announce("\(presetNames[selectedPreset]) started. \(TimerEngine.spokenDuration(remaining)) remaining.")
         }
     }
 
@@ -916,7 +1036,7 @@ final class TimerSessionCoordinator: ObservableObject {
         if flowEnabled {
             let missed = afterWake || now.continuous - expiredDeadline > 2
             let nextPhase = upcomingPhase
-            let nextPreset = nextPhase.presetIndex
+            let nextPreset = presetIndex(for: nextPhase)
             let nextDuration = duration(for: nextPhase)
             if autoStartNextPhase && !missed && now.continuous < expiredDeadline + nextDuration {
                 phase = nextPhase
@@ -1189,8 +1309,8 @@ final class TimerSessionCoordinator: ObservableObject {
             } else {
                 timeLeft = TimerEngine.remaining(until: savedDeadline, at: now)
             }
-            selectedPreset = saved.selectedPreset
             phase = saved.phase
+            selectedPreset = restoredPresetIndex(for: phase, savedIndex: saved.selectedPreset)
             total = saved.total
             if timeLeft > 0 {
                 remaining = sessionKind == .stopwatch ? total - min(total, timeLeft) :
@@ -1220,22 +1340,22 @@ final class TimerSessionCoordinator: ObservableObject {
                 sessionPersistence.clear()
                 return
             }
-            selectedPreset = saved.selectedPreset
             phase = saved.phase
+            selectedPreset = restoredPresetIndex(for: phase, savedIndex: saved.selectedPreset)
             total = saved.total
             remaining = paused
             isPaused = true
             saveSession()
         case .completed:
-            selectedPreset = saved.selectedPreset
             phase = saved.phase
+            selectedPreset = restoredPresetIndex(for: phase, savedIndex: saved.selectedPreset)
             total = saved.total
             remaining = sessionKind == .stopwatch ? total : 0
             isComplete = true
             saveSession()
         case .ready:
-            selectedPreset = saved.selectedPreset
             phase = saved.phase
+            selectedPreset = restoredPresetIndex(for: phase, savedIndex: saved.selectedPreset)
             total = saved.total
             remaining = sessionKind == .stopwatch ? 0 : total
             saveSession()

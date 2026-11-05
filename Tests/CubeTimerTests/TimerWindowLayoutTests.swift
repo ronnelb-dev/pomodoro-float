@@ -3,6 +3,25 @@ import XCTest
 @testable import CubeTimer
 
 final class TimerWindowLayoutTests: XCTestCase {
+    func testStandardMinimumSizeMatchesDefaultWindowSize() {
+        XCTAssertEqual(TimerWindowLayout.standardMinimumSize,
+                       NSSize(width: 420, height: 560))
+        XCTAssertEqual(TimerWindowLayout.floatingMinimumSide, 240)
+    }
+
+    func testStandardFrameMinimumPredicateCoversEitherDimension() {
+        XCTAssertTrue(StandardWindowPosition.isBelowMinimum(
+            NSRect(x: 0, y: 0, width: 419, height: 560)))
+        XCTAssertTrue(StandardWindowPosition.isBelowMinimum(
+            NSRect(x: 0, y: 0, width: 420, height: 559)))
+        XCTAssertTrue(StandardWindowPosition.isBelowMinimum(
+            NSRect(x: 0, y: 0, width: 100, height: 100)))
+        XCTAssertFalse(StandardWindowPosition.isBelowMinimum(
+            NSRect(x: 0, y: 0, width: 420, height: 560)))
+        XCTAssertFalse(StandardWindowPosition.isBelowMinimum(
+            NSRect(x: 0, y: 0, width: 600, height: 700)))
+    }
+
     func testAlwaysOnTopIsSuspendedDuringNativeFullscreen() {
         XCTAssertTrue(TimerWindowLevelPolicy.shouldFloat(alwaysOnTop: true, isFullscreen: false))
         XCTAssertFalse(TimerWindowLevelPolicy.shouldFloat(alwaysOnTop: true, isFullscreen: true))
@@ -34,7 +53,7 @@ final class TimerWindowLayoutTests: XCTestCase {
         XCTAssertTrue(metrics.compact)
         XCTAssertEqual(metrics.spacing, 6)
         XCTAssertEqual(metrics.verticalPadding, 12)
-        XCTAssertEqual(metrics.displayHeight, 160)
+        XCTAssertEqual(metrics.displayHeight, 230)
         XCTAssertLessThanOrEqual(metrics.displayHeight, 510)
     }
 
@@ -65,6 +84,20 @@ final class TimerWindowLayoutTests: XCTestCase {
         XCTAssertEqual(TimerWindowLayout.digitalPanelWidth(availableWidth: 2_000), 1_200)
     }
 
+    func testStandardClockPanelWidthFitsNarrowWindowsAndCapsRegularWindows() {
+        XCTAssertEqual(TimerWindowLayout.standardClockPanelWidth(availableWidth: 419), 419)
+        XCTAssertEqual(TimerWindowLayout.standardClockPanelWidth(availableWidth: 610), 610)
+        XCTAssertEqual(TimerWindowLayout.standardClockPanelWidth(availableWidth: 900), 610)
+        XCTAssertEqual(TimerWindowLayout.standardClockPanelWidth(availableWidth: 0), 0)
+        XCTAssertEqual(TimerWindowLayout.standardClockPanelWidth(availableWidth: -20), 0)
+    }
+
+    func testHeaderPickerWidthStaysCenteredWithinRegularBounds() {
+        XCTAssertEqual(TimerWindowLayout.headerPickerWidth(availableWidth: 610, compact: false), 126)
+        XCTAssertEqual(TimerWindowLayout.headerPickerWidth(availableWidth: 310, compact: true), 126)
+        XCTAssertEqual(TimerWindowLayout.headerPickerWidth(availableWidth: 260, compact: true), 108)
+    }
+
     func testDigitalDisplayUsesAvailableHeightWhileCubeKeepsExistingCap() {
         let size = NSSize(width: 1_000, height: 1_200)
         let digital = TimerWindowLayout.standardMetrics(size: size,
@@ -90,7 +123,7 @@ final class TimerWindowLayoutTests: XCTestCase {
             NSRect(x: 2_000, y: 2_000, width: 1_200, height: 1_400), visibleFrames: [screen])
 
         XCTAssertEqual(tooSmall.size, TimerWindowLayout.standardMinimumSize)
-        XCTAssertEqual(tooSmall.origin, NSPoint(x: 1_090, y: 710))
+        XCTAssertEqual(tooSmall.origin, NSPoint(x: 1_020, y: 640))
         XCTAssertEqual(tooLarge.size, TimerWindowLayout.standardMaximumSize)
         XCTAssertEqual(tooLarge.origin, NSPoint(x: 590, y: 200))
     }

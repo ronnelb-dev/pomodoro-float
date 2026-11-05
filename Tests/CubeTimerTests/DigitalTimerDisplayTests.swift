@@ -40,6 +40,12 @@ final class DigitalTimerDisplayTests: XCTestCase {
             "Time remaining 05:00, Countdown, ready")
     }
 
+    func testOnlyCubePresetTilesStartImmediately() {
+        XCTAssertTrue(TimerDisplayStyle.cube.presetTilesStartImmediately)
+        XCTAssertFalse(TimerDisplayStyle.digital.presetTilesStartImmediately)
+        XCTAssertFalse(TimerDisplayStyle.clock.presetTilesStartImmediately)
+    }
+
     func testFullscreenExitHintSupportsDigitalAndClockForThreeSeconds() {
         XCTAssertTrue(DisplayFullscreenHint.shouldShow(displayStyle: .digital,
                                                        isFullscreen: true))

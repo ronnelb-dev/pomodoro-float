@@ -124,6 +124,8 @@ enum TimerDisplayStyle: String, CaseIterable, Identifiable {
 
     var supportsFullscreen: Bool { self == .digital || self == .clock }
 
+    var presetTilesStartImmediately: Bool { self == .cube }
+
     var fullscreenTitle: String {
         switch self {
         case .cube: "Full Screen"
@@ -135,7 +137,7 @@ enum TimerDisplayStyle: String, CaseIterable, Identifiable {
 
 @MainActor
 final class TimerModel: ObservableObject {
-    static let presetNames = ["5 MIN", "10 MIN", "25 MIN", "50 MIN", "60 MIN"]
+    static let defaultPresetNames = TimerSessionCoordinator.defaultPresetNames
     static let defaultDurations = [300, 600, 1500, 3000, 3600]
     static let displayStyleKey = "timerDisplayStyle"
     static func spokenPresetName(_ index: Int) -> String {
@@ -165,6 +167,8 @@ final class TimerModel: ObservableObject {
     }
     @Published private(set) var sessionSnapshot: TimerSessionSnapshot
     @Published private(set) var preferences: TimerSessionPreferences
+    @Published private(set) var presetNames: [String]
+    @Published private(set) var presetRoles: [PresetRole]
 
     var presetSeconds: [Int] { preferences.presetSeconds }
     var sessionKind: TimerSessionKind { sessionSnapshot.sessionKind }
@@ -216,8 +220,8 @@ final class TimerModel: ObservableObject {
             : sessionKind == .customCountdown
             ? "Countdown"
             : flowEnabled
-            ? "\(phase.displayName) session, \(phase == .longBreak ? TimerEngine.spokenDuration(total) : Self.spokenPresetName(selectedPreset))"
-            : "\(Self.spokenPresetName(selectedPreset))\(hasSuspendedPomodoro ? ", Pomodoro paused" : "")"
+            ? "\(phase.displayName) session, \(phase == .longBreak ? TimerEngine.spokenDuration(total) : presetNames[selectedPreset])"
+            : "\(presetNames[selectedPreset])\(hasSuspendedPomodoro ? ", Pomodoro paused" : "")"
         let count = pomodoroModeEnabled
             ? ", \(focusesInCycle) of \(cycleTarget) focuses toward long break, \(completedFocusTotal) completed focuses total"
             : ""
@@ -254,6 +258,8 @@ final class TimerModel: ObservableObject {
         volume = coordinator.volume
         autoStartNextPhase = coordinator.autoStartNextPhase
         displayStyle = TimerDisplayStyle(rawValue: defaults.string(forKey: Self.displayStyleKey) ?? "") ?? .cube
+        presetNames = coordinator.presetNames
+        presetRoles = coordinator.presetRoles
         preferences = TimerSessionPreferences(presetSeconds: coordinator.presetSeconds,
                                               longBreakSeconds: coordinator.longBreakSeconds,
                                               requestedCycleTarget: coordinator.requestedCycleTarget,
@@ -264,6 +270,8 @@ final class TimerModel: ObservableObject {
                 guard let self else { return }
                 self.sessionSnapshot = self.coordinator.sessionSnapshot
                 self.syncPreferencesFromSessionRuntime()
+                self.presetNames = self.coordinator.presetNames
+                self.presetRoles = self.coordinator.presetRoles
                 self.borderlessWindow = self.temporaryStandardWindowForDisplayFullscreen
                     ? false : self.coordinator.borderlessWindow
                 self.objectWillChange.send()
@@ -339,6 +347,39 @@ final class TimerModel: ObservableObject {
         borderlessWindow = coordinator.borderlessWindow
     }
     func setPreset(_ index: Int, seconds: Int) { _ = send(.setPreset(index, seconds)) }
+    func setPresetName(_ index: Int, name: String) {
+        coordinator.setPresetName(index, name: name)
+        presetNames = coordinator.presetNames
+        objectWillChange.send()
+    }
+    func setPresetRole(_ index: Int, role: PresetRole) {
+        coordinator.setPresetRole(index, role: role)
+        presetRoles = coordinator.presetRoles
+        objectWillChange.send()
+    }
+    func savePreset(_ index: Int, seconds: Int, name: String) {
+        coordinator.savePreset(index, seconds: seconds, name: name)
+        presetNames = coordinator.presetNames
+        preferences.presetSeconds = coordinator.presetSeconds
+        sessionSnapshot = coordinator.sessionSnapshot
+        objectWillChange.send()
+    }
+    func resetPreset(_ index: Int) {
+        coordinator.resetPreset(index)
+        presetNames = coordinator.presetNames
+        presetRoles = coordinator.presetRoles
+        preferences.presetSeconds = coordinator.presetSeconds
+        sessionSnapshot = coordinator.sessionSnapshot
+        objectWillChange.send()
+    }
+    func resetPresetSettings() {
+        coordinator.resetPresetSettings()
+        presetNames = coordinator.presetNames
+        presetRoles = coordinator.presetRoles
+        syncPreferencesFromSessionRuntime()
+        sessionSnapshot = coordinator.sessionSnapshot
+        objectWillChange.send()
+    }
     func setLongBreak(seconds: Int) { _ = send(.setLongBreak(seconds)) }
     func immediateDurationAction(for setting: DurationSetting,
                                  seconds: Int) -> DurationImmediateAction? {

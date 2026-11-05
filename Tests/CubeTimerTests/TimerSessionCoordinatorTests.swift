@@ -1307,12 +1307,12 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                appIsActive: { true }, accessibilityAnnouncer: announcer)
         XCTAssertEqual(model.accessibilityValue,
-                       "5-minute preset, Ready, 5 minutes remaining")
+                       "5 MIN, Ready, 5 minutes remaining")
         XCTAssertTrue(announcer.messages.isEmpty)
 
         model.start()
         XCTAssertEqual(announcer.messages.count, 1)
-        XCTAssertTrue(announcer.messages[0].contains("preset started"))
+        XCTAssertTrue(announcer.messages[0].contains("5 MIN started"))
         model.refresh(at: Date().addingTimeInterval(2))
         XCTAssertEqual(announcer.messages.count, 1)
         XCTAssertTrue(model.accessibilityValue.contains("Running"))
@@ -1340,7 +1340,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(model.phase, .breakTime)
         XCTAssertEqual(announcer.messages.count, 2)
         XCTAssertTrue(announcer.messages[1].contains("Focus complete. Short Break running."))
-        XCTAssertTrue(model.accessibilityValue.contains("Break session, 5-minute preset"))
+        XCTAssertTrue(model.accessibilityValue.contains("Break session, 5 MIN"))
         model.refresh(at: Date().addingTimeInterval(3))
         XCTAssertEqual(announcer.messages.count, 2)
         model.reset()
@@ -1369,7 +1369,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         model.refresh(at: Date().addingTimeInterval(2))
         XCTAssertEqual(announcer.messages.last, "Timer complete.")
         XCTAssertEqual(model.accessibilityValue,
-                       "5-minute preset, Complete, 0 seconds remaining")
+                       "5 MIN, Complete, 0 seconds remaining")
         let count = announcer.messages.count
         model.refresh(at: Date().addingTimeInterval(3))
         XCTAssertEqual(announcer.messages.count, count)
@@ -1642,6 +1642,63 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(reloaded.selectedPreset, 4)
         XCTAssertEqual(reloaded.presetSeconds, [300, 600, 1_575, 3_000, 3_661])
         model.reset()
+    }
+
+    func testPresetMetadataMigratesAndPersistsWithSemanticRoles() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(777, forKey: "presetSeconds.1")
+
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+        XCTAssertEqual(model.presetNames, TimerSessionCoordinator.defaultPresetNames)
+        XCTAssertEqual(model.presetRoles, [.shortBreak, .general, .focus, .general, .general])
+
+        model.setPresetName(1, name: "Deep Work")
+        model.setPresetRole(1, role: .focus)
+        XCTAssertEqual(model.presetNames[1], "Deep Work")
+        XCTAssertEqual(model.presetRoles[1], .focus)
+        XCTAssertEqual(model.presetRoles[2], .general)
+
+        let reloaded = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+        XCTAssertEqual(reloaded.presetNames[1], "Deep Work")
+        XCTAssertEqual(reloaded.presetRoles[1], .focus)
+        XCTAssertEqual(reloaded.presetRoles[2], .general)
+    }
+
+    func testPomodoroUsesConfiguredFocusAndShortBreakRoles() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "flowEnabled")
+        defaults.set(PresetRole.focus.rawValue, forKey: "presetRole.4")
+        defaults.set(PresetRole.general.rawValue, forKey: "presetRole.2")
+
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+        XCTAssertEqual(model.focusPresetIndex, 4)
+        XCTAssertEqual(model.total, TimeInterval(model.presetSeconds[4]))
+        model.setPreset(4, seconds: 1)
+        model.start()
+        model.refresh(at: Date().addingTimeInterval(2))
+        XCTAssertEqual(model.phase, .breakTime)
+        XCTAssertEqual(model.selectedPreset, model.shortBreakPresetIndex)
+    }
+
+    func testSavingOrResettingPresetSettingsDoesNotReplaceActiveOneOffTimer() {
+        let model = makeModel()
+        defer { model.reset() }
+        model.startCustomCountdown(seconds: 120)
+        let sessionTotal = model.total
+
+        model.savePreset(1, seconds: 77, name: "Sprint")
+        XCTAssertEqual(model.sessionKind, .customCountdown)
+        XCTAssertEqual(model.total, sessionTotal)
+        XCTAssertEqual(model.presetSeconds[1], 77)
+        XCTAssertEqual(model.presetNames[1], "Sprint")
+
+        model.resetPresetSettings()
+        XCTAssertEqual(model.sessionKind, .customCountdown)
+        XCTAssertEqual(model.total, sessionTotal)
+        XCTAssertEqual(model.presetSeconds, TimerSessionCoordinator.defaultDurations)
+        XCTAssertEqual(model.presetNames, TimerSessionCoordinator.defaultPresetNames)
     }
 
     func testPresetCyclingIncludesSixtyMinutesAndWraps() {
