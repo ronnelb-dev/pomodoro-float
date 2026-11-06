@@ -43,6 +43,35 @@ final class TimerModelAdapterTests: XCTestCase {
         model.reset()
     }
 
+    func testResetPresetSettingsRestoresCycleTargetWithoutChangingRunningSession() {
+        let suite = "CubeTimerResetPresetSettingsTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        model.setCycleTarget(8)
+        model.setFlowEnabled(true)
+        model.autoStartNextPhase = true
+        model.setPreset(0, seconds: 420)
+        model.setLongBreak(seconds: 1_200)
+        model.start()
+        let activeDuration = model.total
+
+        model.resetPresetSettings()
+
+        XCTAssertEqual(model.requestedCycleTarget, 4)
+        XCTAssertEqual(model.preferences.requestedCycleTarget, 4)
+        XCTAssertEqual(model.presetSeconds, TimerModel.defaultDurations)
+        XCTAssertEqual(model.presetNames, TimerModel.defaultPresetNames)
+        XCTAssertEqual(model.longBreakSeconds, 900)
+        XCTAssertTrue(model.requestedFlowEnabled)
+        XCTAssertTrue(model.autoStartNextPhase)
+        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(model.total, activeDuration)
+        model.reset()
+    }
+
     func testDisplayStyleDefaultsPersistsAndDoesNotChangeTimerSession() {
         let suite = "CubeTimerDisplayStyleTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

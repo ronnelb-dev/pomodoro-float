@@ -829,6 +829,22 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         model.reset()
     }
 
+    func testResetPresetSettingsDefersCycleTargetUntilCurrentPomodoroCycleEnds() {
+        let (model, _, boundary, _, _) = runningPomodoro(focusPreset: 1, breakPreset: 1)
+        defer { model.reset() }
+
+        model.setCycleTarget(8)
+        model.refresh(at: boundary)
+        XCTAssertEqual(model.focusesInCycle, 1)
+        XCTAssertEqual(model.cycleTarget, 8)
+
+        model.resetPresetSettings()
+
+        XCTAssertEqual(model.requestedCycleTarget, 4)
+        XCTAssertEqual(model.cycleTarget, 8)
+        XCTAssertTrue(model.cycleTargetChangePending)
+    }
+
     func testPendingCycleTargetPersistsThroughRelaunchAndLongBreakCompletion() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }

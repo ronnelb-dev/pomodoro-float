@@ -17,6 +17,14 @@ enum PresetRole: String, CaseIterable, Codable {
         case .general: "General"
         }
     }
+
+    var pomodoroDescription: String {
+        switch self {
+        case .shortBreak: "Used for Pomodoro short breaks."
+        case .focus: "Used for Pomodoro focus phases."
+        case .general: "Starts as an independent timer outside Pomodoro phases."
+        }
+    }
 }
 
 struct SystemTimerTimeSource: TimerTimeSource {
@@ -586,6 +594,7 @@ final class TimerSessionCoordinator: ObservableObject {
             defaults.set(presetRoles[index].rawValue, forKey: "presetRole.\(index)")
         }
         setLongBreak(seconds: 900)
+        setCycleTarget(4)
     }
 
     func setLongBreak(seconds: Int) {

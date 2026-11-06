@@ -2193,13 +2193,13 @@ private struct SettingsView: View {
                         minutes: $longBreakMinutes, seconds: $longBreakSeconds,
                         savedSeconds: timer.longBreakSeconds)
             helper("Durations: 00:01–99:59. Edit each name and role, then save the row. Focus and Short Break roles drive Pomodoro; only one slot can have each role.")
-            Button("Reset Presets to Defaults") {
+            Button("Reset Preset Settings to Defaults") {
                 showingPresetResetConfirmation = true
             }
-            .confirmationDialog("Reset all preset names, roles, and durations?",
+            .confirmationDialog("Reset preset settings and focus-cycle target to defaults?",
                                 isPresented: $showingPresetResetConfirmation,
                                 titleVisibility: .visible) {
-                Button("Reset Presets", role: .destructive) {
+                Button("Reset Preset Settings", role: .destructive) {
                     timer.resetPresetSettings()
                     minutes = timer.presetSeconds.map { $0 / 60 }
                     seconds = timer.presetSeconds.map { $0 % 60 }
@@ -2207,10 +2207,11 @@ private struct SettingsView: View {
                     presetRolesDraft = timer.presetRoles
                     longBreakMinutes = timer.longBreakSeconds / 60
                     longBreakSeconds = timer.longBreakSeconds % 60
+                    cycleTargetSelection = 4
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("The active timer will not be reset.")
+                Text("Preset settings and the focus-cycle target will be restored. The active timer will not be reset.")
             }
         }
     }
@@ -2224,6 +2225,18 @@ private struct SettingsView: View {
             presetRolesDraft[index] != timer.presetRoles[index]
         let immediate = durationChanged
             ? timer.immediateDurationAction(for: .preset(index), seconds: proposed) : nil
+        let rowActions = PresetEditorRowPolicy.state(
+            durationChanged: durationChanged,
+            metadataChanged: metadataChanged,
+            canAffectActiveSession: immediate != nil)
+        let duplicateNames = PresetEditorRowPolicy.duplicateNames(
+            for: proposed,
+            editingIndex: index,
+            presetSeconds: minutes.indices.map {
+                TimerEngine.clampedDuration(
+                    min(99, max(0, minutes[$0])) * 60 + min(59, max(0, seconds[$0])))
+            },
+            presetNames: presetNamesDraft)
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 TextField("Preset name", text: $presetNamesDraft[index])
@@ -2249,43 +2262,57 @@ private struct SettingsView: View {
                 Text("s").accessibilityHidden(true)
             }
             .font(.system(size: 12, design: .monospaced))
-            if durationChanged || metadataChanged {
-                HStack(spacing: 12) {
-                    if let immediate {
-                        Button(immediate == .applyNow ? "Apply Now" : "Restart This Phase") {
-                            commitDuration(.preset(index), proposed: proposed, action: immediate == .applyNow ? .applyNow : .restartThisPhase,
-                                           minutes: $minutes[index], seconds: $seconds[index])
-                        }
-                    }
-                    if durationChanged {
-                        Button("Use Next Time") {
-                            commitDuration(.preset(index), proposed: proposed, action: .useNextTime,
-                                           minutes: $minutes[index], seconds: $seconds[index])
-                        }
-                    }
-                    if metadataChanged {
-                        Button("Save Preset") {
-                            if durationChanged {
-                                _ = timer.editDuration(.preset(index), seconds: proposed, action: .useNextTime)
-                                minutes[index] = proposed / 60
-                                seconds[index] = proposed % 60
-                            }
-                            timer.setPresetName(index, name: name)
-                            timer.setPresetRole(index, role: presetRolesDraft[index])
-                            presetNamesDraft[index] = timer.presetNames[index]
-                            presetRolesDraft = timer.presetRoles
-                        }
-                    }
-                    Button("Reset") {
-                        timer.resetPreset(index)
-                        minutes[index] = timer.presetSeconds[index] / 60
-                        seconds[index] = timer.presetSeconds[index] % 60
-                        presetNamesDraft[index] = timer.presetNames[index]
-                        presetRolesDraft = timer.presetRoles
+            Text(presetRolesDraft[index].pomodoroDescription)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(colors.secondary)
+            if !duplicateNames.isEmpty {
+                Label("Same duration as \(duplicateNames.joined(separator: ", "))",
+                      systemImage: "exclamationmark.circle")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(colors.secondary)
+                    .accessibilityLabel("Duplicate duration. Matches \(duplicateNames.joined(separator: ", ")). Duplicates are allowed.")
+            }
+            if rowActions.showsImmediateAction, let immediate {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("CURRENT SESSION")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .tracking(0.8)
+                        .foregroundStyle(colors.secondary)
+                    Button(immediate == .applyNow ? "Apply Now" : "Restart This Phase") {
+                        commitDuration(.preset(index), proposed: proposed,
+                                       action: immediate == .applyNow ? .applyNow : .restartThisPhase,
+                                       minutes: $minutes[index], seconds: $seconds[index])
                     }
                 }
-                .font(.system(size: 11, weight: .semibold))
             }
+            HStack(spacing: 12) {
+                Button("Save Preset") {
+                    if durationChanged {
+                        _ = timer.editDuration(.preset(index), seconds: proposed, action: .useNextTime)
+                        minutes[index] = proposed / 60
+                        seconds[index] = proposed % 60
+                    }
+                    timer.setPresetName(index, name: name)
+                    timer.setPresetRole(index, role: presetRolesDraft[index])
+                    presetNamesDraft[index] = timer.presetNames[index]
+                    presetRolesDraft = timer.presetRoles
+                }
+                .disabled(!rowActions.isSaveEnabled || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Use Next Time") {
+                    commitDuration(.preset(index), proposed: proposed, action: .useNextTime,
+                                   minutes: $minutes[index], seconds: $seconds[index])
+                }
+                .disabled(!rowActions.isUseNextTimeEnabled)
+                Spacer(minLength: 0)
+                Button("Reset") {
+                    timer.resetPreset(index)
+                    minutes[index] = timer.presetSeconds[index] / 60
+                    seconds[index] = timer.presetSeconds[index] % 60
+                    presetNamesDraft[index] = timer.presetNames[index]
+                    presetRolesDraft = timer.presetRoles
+                }
+            }
+            .font(.system(size: 11, weight: .semibold))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
