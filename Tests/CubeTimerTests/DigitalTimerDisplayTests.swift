@@ -26,6 +26,13 @@ final class DigitalTimerDisplayTests: XCTestCase {
         XCTAssertNil(SevenSegmentEncoding.segments(for: ":"))
     }
 
+    func testSevenSegmentEncodingMapsLocalizedDecimalDigits() {
+        XCTAssertEqual(SevenSegmentEncoding.segments(for: "٠"),
+                       SevenSegmentEncoding.segments(for: "0"))
+        XCTAssertEqual(SevenSegmentEncoding.segments(for: "٥"),
+                       SevenSegmentEncoding.segments(for: "5"))
+    }
+
     func testAccessibilityValueIncludesTimerPhaseStatusAndFocusProgress() {
         XCTAssertEqual(
             DigitalTimerAccessibility.value(timeLabel: "24:53", phaseLabel: "Focus",
@@ -108,12 +115,66 @@ final class DigitalTimerDisplayTests: XCTestCase {
         let twelveHour = DeskClockFormatter.presentation(
             for: date, locale: Locale(identifier: "en_US"), calendar: calendar, timeZone: utc)
         XCTAssertEqual(twelveHour.time, "1:05:09\u{202F}PM")
+        XCTAssertEqual(twelveHour.segmentTime, "1:05:09")
+        XCTAssertEqual(twelveHour.dayPeriod, "PM")
+        XCTAssertEqual(twelveHour.dayPeriodPlacement, .trailing)
         XCTAssertEqual(twelveHour.dateLine, "Wed, 1/3/2024")
 
         let twentyFourHour = DeskClockFormatter.presentation(
             for: date, locale: Locale(identifier: "en_GB"), calendar: calendar, timeZone: utc)
         XCTAssertEqual(twentyFourHour.time, "13:05:09")
+        XCTAssertEqual(twentyFourHour.segmentTime, "13:05:09")
+        XCTAssertNil(twentyFourHour.dayPeriod)
         XCTAssertEqual(twentyFourHour.dateLine, "Wed, 03/01/2024")
+    }
+
+    func testDeskClockSupportsLocalizedDigitsAndLeadingDayPeriod() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: 2024, month: 1, day: 3,
+                                                       hour: 13, minute: 5, second: 9))!
+
+        let arabic = DeskClockFormatter.presentation(
+            for: date, locale: Locale(identifier: "ar_EG"), calendar: calendar, timeZone: utc)
+        XCTAssertEqual(arabic.segmentTime, "١:٠٥:٠٩")
+        XCTAssertEqual(arabic.dayPeriod, "م")
+        XCTAssertEqual(arabic.dayPeriodPlacement, .trailing)
+
+        let taiwanese = DeskClockFormatter.presentation(
+            for: date, locale: Locale(identifier: "zh_TW"), calendar: calendar, timeZone: utc)
+        XCTAssertEqual(taiwanese.segmentTime, "1:05:09")
+        XCTAssertEqual(taiwanese.dayPeriod, "下午")
+        XCTAssertEqual(taiwanese.dayPeriodPlacement, .leading)
+    }
+
+    func testDeskClockFallsBackToLocalizedTextForUnsupportedTimeSeparator() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: 2024, month: 1, day: 3,
+                                                       hour: 13, minute: 5, second: 9))!
+
+        let finnish = DeskClockFormatter.presentation(
+            for: date, locale: Locale(identifier: "fi_FI"), calendar: calendar, timeZone: utc)
+        XCTAssertEqual(finnish.time, "13.05.09")
+        XCTAssertNil(finnish.segmentTime)
+    }
+
+    func testDeskClockDigitHeightFitsLocalizedTimeAndScalesWithPanel() {
+        let time = "12:56:02 PM"
+        let compactSize = CGSize(width: 320, height: 190)
+        let regularSize = CGSize(width: 520, height: 300)
+        let compactHeight = DeskClockLayout.digitHeight(
+            containerSize: compactSize, timeLabel: time, compact: true)
+        let regularHeight = DeskClockLayout.digitHeight(
+            containerSize: regularSize, timeLabel: time, compact: false)
+
+        XCTAssertGreaterThan(compactHeight, 0)
+        XCTAssertGreaterThan(regularHeight, compactHeight)
+        XCTAssertLessThanOrEqual(
+            compactHeight * DigitalTimerLayout.aspectRatio(for: time),
+            compactSize.width - 24 + 0.001)
     }
 
     func testDigitHeightUsesBothAvailableDimensionsAndFitsShortPanel() {

@@ -29,6 +29,18 @@ enum DeskClockLayout {
     static func fullscreenPanelWidth(availableWidth: CGFloat) -> CGFloat {
         max(0, availableWidth * 0.85)
     }
+
+    static func digitHeight(containerSize: CGSize, timeLabel: String,
+                            compact: Bool) -> CGFloat {
+        let padding: CGFloat = compact ? 12 : 24
+        let dateHeight: CGFloat = compact ? 18 : 24
+        let spacing: CGFloat = compact ? 8 : 16
+        let availableWidth = max(0, containerSize.width - padding * 2)
+        let availableHeight = max(0, containerSize.height - padding * 2
+                                  - dateHeight - spacing)
+        return min(availableHeight,
+                   availableWidth / DigitalTimerLayout.aspectRatio(for: timeLabel))
+    }
 }
 
 enum TimerWindowLayout {
