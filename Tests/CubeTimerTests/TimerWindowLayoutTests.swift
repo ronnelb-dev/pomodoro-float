@@ -45,6 +45,26 @@ final class TimerWindowLayoutTests: XCTestCase {
         XCTAssertEqual(DeskClockLayout.fullscreenPanelWidth(availableWidth: -10), 0)
     }
 
+    func testImmersiveCubeUsesMostOfTheAvailableFullscreenArea() {
+        XCTAssertEqual(TimerWindowLayout.immersiveCubeSide(
+            availableSize: NSSize(width: 1_600, height: 900)), 792)
+        XCTAssertEqual(TimerWindowLayout.immersiveCubeSide(
+            availableSize: NSSize(width: 700, height: 1_200)), 616)
+        XCTAssertEqual(TimerWindowLayout.immersiveCubeSide(
+            availableSize: NSSize(width: -10, height: 600)), 0)
+    }
+
+    func testImmersiveCubeReservesHeaderAndOptionalReadoutSpace() {
+        let fullscreenSize = NSSize(width: 1_600, height: 900)
+
+        XCTAssertEqual(TimerWindowLayout.immersiveCubeSide(
+            availableSize: fullscreenSize, reservedHeight: 76), 725.12, accuracy: 0.01)
+        XCTAssertEqual(TimerWindowLayout.immersiveCubeSide(
+            availableSize: fullscreenSize, reservedHeight: 124), 682.88, accuracy: 0.01)
+        XCTAssertEqual(TimerWindowLayout.immersiveCubeSide(
+            availableSize: fullscreenSize, reservedHeight: 1_000), 0)
+    }
+
     func testMinimumStandardSizeFitsCompactLayoutWithAllTransientRows() {
         let metrics = TimerWindowLayout.standardMetrics(
             size: TimerWindowLayout.standardMinimumSize,

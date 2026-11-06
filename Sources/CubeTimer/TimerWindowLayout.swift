@@ -52,7 +52,16 @@ enum TimerWindowLayout {
     static let digitalPanelMaximumWidth: CGFloat = 1_200
     static let headerPickerRegularWidth: CGFloat = 126
     static let headerPickerMinimumWidth: CGFloat = 108
+    static let immersiveCubeHeaderHeight: CGFloat = 36
+    static let immersiveCubeReadoutHeight: CGFloat = 40
+    static let immersiveCubeReadoutSpacing: CGFloat = 8
     private static let expandedPanelWidthFraction: CGFloat = 0.85
+
+    static func immersiveCubeSide(availableSize: NSSize,
+                                  reservedHeight: CGFloat = 0) -> CGFloat {
+        let contentHeight = max(0, availableSize.height - max(0, reservedHeight))
+        return max(0, min(availableSize.width, contentHeight) * 0.88)
+    }
 
     static func headerPickerWidth(availableWidth: CGFloat, compact: Bool) -> CGFloat {
         let availableWidth = max(0, availableWidth)

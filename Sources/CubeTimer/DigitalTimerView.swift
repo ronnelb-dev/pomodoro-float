@@ -17,8 +17,15 @@ enum DisplayFullscreenHint {
 }
 
 enum DisplayFullscreenTransition {
-    enum EntryAction: Equatable {
+    enum Phase: Equatable {
+        case windowed
+        case preparing
+        case fullscreen
+    }
+
+    enum ToggleAction: Equatable {
         case reject
+        case exitFullscreen
         case toggleNow
         case waitForStandardWindow
     }
@@ -29,10 +36,20 @@ enum DisplayFullscreenTransition {
         case waitForStandardWindow
     }
 
-    static func entryAction(supportsFullscreen: Bool, isNativeFullscreen: Bool,
-                            isBorderless: Bool) -> EntryAction {
+    static func shouldShowDisplayPicker(phase: Phase) -> Bool {
+        switch phase {
+        case .windowed, .preparing, .fullscreen: true
+        }
+    }
+
+    static func shouldEnableFullscreenToggle(phase: Phase) -> Bool {
+        phase != .preparing
+    }
+
+    static func toggleAction(supportsFullscreen: Bool, isNativeFullscreen: Bool,
+                             isBorderless: Bool) -> ToggleAction {
         guard supportsFullscreen else { return .reject }
-        guard !isNativeFullscreen else { return .toggleNow }
+        if isNativeFullscreen { return .exitFullscreen }
         return isBorderless ? .waitForStandardWindow : .toggleNow
     }
 

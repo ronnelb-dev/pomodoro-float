@@ -131,6 +131,9 @@ struct CubeSceneView: NSViewRepresentable {
     var pomodoroSuspended: Bool = false
     let displayAction: String
     var displayStyle: TimerDisplayStyle = .cube
+    var isFullscreen: Bool = false
+    var isPreparingFullscreen: Bool = false
+    var onToggleFullscreen: (() -> Void)? = nil
     let onDisplayClick: () -> Void
     let onOpenSettings: () -> Void
     var onOpenCustomCountdown: (() -> Void)? = nil
@@ -205,6 +208,10 @@ struct CubeSceneView: NSViewRepresentable {
         view.toggleAlwaysOnTopHandler = interactive ? onToggleAlwaysOnTop : nil
         view.resetHandler = interactive ? onReset : nil
         view.displayStyle = displayStyle
+        view.isFullscreen = isFullscreen
+        view.isPreparingFullscreen = isPreparingFullscreen
+        view.fullscreenToggleHandler = interactive && displayStyle.supportsFullscreen
+            ? onToggleFullscreen : nil
         view.selectDisplayStyleHandler = interactive ? onSelectDisplayStyle : nil
         view.nextPhaseName = interactive ? nextPhaseName : nil
         view.startNextPhaseHandler = interactive ? onStartNextPhase : nil
@@ -592,6 +599,9 @@ final class CubeSCNView: SCNView {
     var resetHandler: (() -> Void)?
     var selectDisplayStyleHandler: ((TimerDisplayStyle) -> Void)?
     var displayStyle: TimerDisplayStyle = .cube
+    var isFullscreen = false
+    var isPreparingFullscreen = false
+    var fullscreenToggleHandler: (() -> Void)?
     var nextPhaseName: String?
     var startNextPhaseHandler: (() -> Void)?
     var skipBreakHandler: (() -> Void)?
@@ -849,6 +859,16 @@ final class CubeSCNView: SCNView {
         clockStyle.target = self
         clockStyle.state = displayStyle == .clock ? .on : .off
         menu.addItem(clockStyle)
+        if displayStyle.supportsFullscreen, fullscreenToggleHandler != nil {
+            menu.addItem(.separator())
+            let title = isPreparingFullscreen ? "Entering Full Screen…" :
+                (isFullscreen ? "Exit Full Screen" : displayStyle.fullscreenTitle)
+            let fullscreen = NSMenuItem(title: title,
+                                        action: #selector(toggleFullscreen), keyEquivalent: "")
+            fullscreen.target = self
+            fullscreen.isEnabled = !isPreparingFullscreen
+            menu.addItem(fullscreen)
+        }
         menu.addItem(.separator())
         let mode = NSMenuItem(title: "Borderless Window", action: #selector(toggleBorderless),
                               keyEquivalent: "")
@@ -910,6 +930,7 @@ final class CubeSCNView: SCNView {
     @objc private func toggleBorderless() { toggleBorderlessHandler?() }
     @objc private func toggleAlwaysOnTop() { toggleAlwaysOnTopHandler?() }
     @objc private func resetTimer() { resetHandler?() }
+    @objc private func toggleFullscreen() { fullscreenToggleHandler?() }
     @objc private func selectCubeStyle() { selectDisplayStyleHandler?(.cube) }
     @objc private func selectDigitalStyle() { selectDisplayStyleHandler?(.digital) }
     @objc private func selectClockStyle() { selectDisplayStyleHandler?(.clock) }

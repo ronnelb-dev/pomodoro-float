@@ -9,7 +9,7 @@ struct TimerHelpView: View {
         ("Use the floating window",
          "Press Command-Shift-B to switch window styles. In the borderless window, Control-drag the cube to move it and Control-drag the lower-right grip to resize it. The right-click menu contains timer controls."),
         ("Choose a display",
-         "Use the display picker to choose Cube, Digital, or Clock. Digital and Clock displays support full screen; press Escape to leave it."),
+         "Use the display picker to choose Cube, Digital, or Clock. All three displays support full screen. Cube becomes an immersive interactive view; press Escape to leave it."),
         ("Countdown and stopwatch",
          "Choose Countdown to enter a one-off duration, or Stopwatch to count up. Command-R resets either mode. A one-off timer suspends an active Pomodoro; choose Resume Pomodoro or press Command-Shift-P to return to it."),
         ("Customize the timer",

@@ -36,6 +36,14 @@ struct CubeTimerApp: App {
                             name: .cubeTimerDisplayFullscreenExitRequested, object: nil)
                     }
                     .keyboardShortcut(.cancelAction)
+                } else if timer.isPreparingDisplayFullscreen {
+                    Button("Entering Full Screen…") {}
+                        .disabled(true)
+                } else if timer.displayStyle.supportsFullscreen {
+                    Button(timer.displayStyle.fullscreenTitle) {
+                        NotificationCenter.default.post(
+                            name: .cubeTimerDisplayFullscreenEntryRequested, object: nil)
+                    }
                 }
                 Button(timer.isRunning ? "Pause" : (timer.isPaused ? "Resume" :
                        timer.nextPhaseName.map { "Start \($0)" } ?? "Start")) {
@@ -754,6 +762,7 @@ private struct TimerView: View {
     @State private var returnToDisplayTick = 0
     @State private var activeWindow: NSWindow?
     @State private var pendingDisplayFullscreenEntry = false
+    @State private var displayFullscreenEntryToggleRequested = false
     @State private var displayFullscreenToggleScheduled = false
     @State private var fullscreenPromotionAttempts = 0
     @State private var isInNativeFullscreen = false
@@ -771,6 +780,11 @@ private struct TimerView: View {
     private var displayWindow: NSWindow? {
         activeWindow ?? NSApp.keyWindow ?? NSApp.mainWindow ??
             NSApp.windows.first { $0.identifier == TimerApplicationDelegate.timerWindowIdentifier }
+    }
+    private var displayFullscreenPhase: DisplayFullscreenTransition.Phase {
+        if isInNativeFullscreen || timer.isDisplayFullscreen { return .fullscreen }
+        if timer.isPreparingDisplayFullscreen { return .preparing }
+        return .windowed
     }
     private var countdownActionName: String {
         if timer.isRunning { return "Pause" }
@@ -857,12 +871,18 @@ private struct TimerView: View {
         .onReceive(NotificationCenter.default.publisher(for: .cubeTimerWindowModeDidChange),
                    perform: handleWindowModeDidChange)
         .onChange(of: timer.borderlessWindow) { _, _ in
-            attemptPendingDisplayFullscreenEntry()
+            // The window-mode controller updates the NSWindow after SwiftUI
+            // observes this value. Wait for its did-change notification before
+            // trying fullscreen so AppKit sees the restored standard style mask.
             schedulePendingDisplayFullscreenEntry()
         }
         .onReceive(NotificationCenter.default.publisher(
             for: .cubeTimerDisplayFullscreenExitRequested)) { _ in
                 exitDisplayFullscreen()
+            }
+        .onReceive(NotificationCenter.default.publisher(
+            for: .cubeTimerDisplayFullscreenEntryRequested)) { _ in
+                toggleDisplayFullscreen()
             }
         .onChange(of: isInNativeFullscreen) { _, isFullscreen in
             withAnimation(.easeOut(duration: 0.2)) {
@@ -895,6 +915,18 @@ private struct TimerView: View {
             let metrics = TimerWindowLayout.standardMetrics(
                 size: geometry.size, transientRowCount: transientRows,
                 expandsDigitalDisplay: timer.displayStyle == .digital)
+            let immersiveCubeFullscreen = timer.displayStyle == .cube && isInNativeFullscreen
+            let immersiveReadoutHeight = displayFaceReadable
+                ? 0 : TimerWindowLayout.immersiveCubeReadoutHeight
+            let immersiveReadoutSpacing = displayFaceReadable
+                ? 0 : TimerWindowLayout.immersiveCubeReadoutSpacing
+            let immersiveReservedHeight = metrics.verticalPadding * 2
+                + TimerWindowLayout.immersiveCubeHeaderHeight
+                + immersiveReadoutHeight + immersiveReadoutSpacing
+            let immersiveCubeSide = TimerWindowLayout.immersiveCubeSide(
+                availableSize: NSSize(width: geometry.size.width - horizontalPadding * 2,
+                                      height: geometry.size.height),
+                reservedHeight: immersiveReservedHeight)
             let availablePanelWidth = geometry.size.width - horizontalPadding * 2
             let digitalPanelWidth = TimerWindowLayout.digitalPanelWidth(
                 availableWidth: availablePanelWidth)
@@ -907,50 +939,75 @@ private struct TimerView: View {
                                center: .top, startRadius: 10, endRadius: 500)
                     .ignoresSafeArea()
 
-                VStack(spacing: metrics.spacing) {
-                    header(narrow: geometry.size.width < 390,
-                           availableWidth: availablePanelWidth)
-                        .frame(maxWidth: TimerWindowLayout.standardContentWidth)
-                    if timer.displayStyle == .clock {
-                        Spacer(minLength: 0)
-                        deskClockPanel(compact: metrics.compact)
-                            .frame(width: isInNativeFullscreen
-                                   ? DeskClockLayout.fullscreenPanelWidth(
-                                       availableWidth: geometry.size.width - horizontalPadding * 2)
-                                   : TimerWindowLayout.standardClockPanelWidth(
-                                       availableWidth: availablePanelWidth))
-                            .frame(height: metrics.displayHeight)
-                        Spacer(minLength: 0)
-                    } else {
-                        Spacer(minLength: 0)
-                        status
+                if immersiveCubeFullscreen {
+                    VStack(spacing: 0) {
+                        header(narrow: geometry.size.width < 390,
+                               availableWidth: geometry.size.width - horizontalPadding * 2)
                             .frame(maxWidth: TimerWindowLayout.standardContentWidth)
-                        if timer.displayStyle == .cube {
-                            cube(height: metrics.displayHeight)
-                        } else {
-                            digitalPanel(compact: metrics.compact)
-                                .frame(width: digitalPanelWidth,
-                                       height: metrics.displayHeight)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: TimerWindowLayout.immersiveCubeHeaderHeight)
+                        if !displayFaceReadable {
+                            borderlessReadout(size: geometry.size.width)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(height: immersiveReadoutHeight,
+                                       alignment: .topLeading)
+                                .padding(.top, immersiveReadoutSpacing)
                         }
-                        if timer.sessionKind != .stopwatch {
-                            progress
+                        Spacer(minLength: 0)
+                        cube(height: immersiveCubeSide)
+                            .frame(width: immersiveCubeSide, height: immersiveCubeSide)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.top, metrics.verticalPadding)
+                    .padding(.bottom, metrics.verticalPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    VStack(spacing: metrics.spacing) {
+                        header(narrow: geometry.size.width < 390,
+                               availableWidth: availablePanelWidth)
+                            .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                        if timer.displayStyle == .clock {
+                            Spacer(minLength: 0)
+                            deskClockPanel(compact: metrics.compact)
+                                .frame(width: isInNativeFullscreen
+                                       ? DeskClockLayout.fullscreenPanelWidth(
+                                           availableWidth: geometry.size.width - horizontalPadding * 2)
+                                       : TimerWindowLayout.standardClockPanelWidth(
+                                           availableWidth: availablePanelWidth))
+                                .frame(height: metrics.displayHeight)
+                            Spacer(minLength: 0)
+                        } else {
+                            Spacer(minLength: 0)
+                            status
+                                .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                            if timer.displayStyle == .cube {
+                                cube(height: metrics.displayHeight)
+                            } else {
+                                digitalPanel(compact: metrics.compact)
+                                    .frame(width: digitalPanelWidth,
+                                           height: metrics.displayHeight)
+                            }
+                            if timer.sessionKind != .stopwatch {
+                                progress
+                                    .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                            }
+                            Spacer(minLength: 0)
+                            presetPicker(compact: metrics.compact)
+                                .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                            timingModeButtons(compact: metrics.compact)
+                                .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                            controls(compact: metrics.compact)
+                                .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                            footer
                                 .frame(maxWidth: TimerWindowLayout.standardContentWidth)
                         }
-                        Spacer(minLength: 0)
-                        presetPicker(compact: metrics.compact)
-                            .frame(maxWidth: TimerWindowLayout.standardContentWidth)
-                        timingModeButtons(compact: metrics.compact)
-                            .frame(maxWidth: TimerWindowLayout.standardContentWidth)
-                        controls(compact: metrics.compact)
-                            .frame(maxWidth: TimerWindowLayout.standardContentWidth)
-                        footer
-                            .frame(maxWidth: TimerWindowLayout.standardContentWidth)
                     }
+                    .frame(maxWidth: contentMaxWidth)
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.top, metrics.verticalPadding)
+                    .padding(.bottom, metrics.verticalPadding)
                 }
-                .frame(maxWidth: contentMaxWidth)
-                .padding(.horizontal, horizontalPadding)
-                .padding(.top, metrics.verticalPadding)
-                .padding(.bottom, metrics.verticalPadding)
 
                 if let alert = timer.alertText {
                     VStack {
@@ -1181,6 +1238,7 @@ private struct TimerView: View {
                   nativeFullscreen: window.styleMask.contains(.fullScreen),
                   modelFullscreen: timer.isDisplayFullscreen || isInNativeFullscreen) else { return }
         pendingDisplayFullscreenEntry = false
+        displayFullscreenEntryToggleRequested = false
         fullscreenPromotionAttempts = 0
         DispatchQueue.main.async { [weak window] in
             guard let window else { return }
@@ -1189,16 +1247,23 @@ private struct TimerView: View {
     }
 
     private func toggleDisplayFullscreen() {
-        guard timer.displayStyle.supportsFullscreen,
+        guard !timer.isPreparingDisplayFullscreen,
+              !pendingDisplayFullscreenEntry,
+              !displayFullscreenEntryToggleRequested,
+              timer.displayStyle.supportsFullscreen,
               let window = displayWindow else { return }
-        switch DisplayFullscreenTransition.entryAction(
+        let entryAction = DisplayFullscreenTransition.toggleAction(
             supportsFullscreen: timer.displayStyle.supportsFullscreen,
             isNativeFullscreen: window.styleMask.contains(.fullScreen),
-            isBorderless: timer.borderlessWindow) {
+            isBorderless: timer.borderlessWindow)
+        switch entryAction {
         case .reject:
             return
-        case .toggleNow:
+        case .exitFullscreen:
+            exitDisplayFullscreen()
+        case .toggleNow, .waitForStandardWindow:
             pendingDisplayFullscreenEntry = true
+            displayFullscreenEntryToggleRequested = false
             fullscreenPromotionAttempts = 0
             guard timer.prepareForDisplayFullscreen() else {
                 pendingDisplayFullscreenEntry = false
@@ -1207,19 +1272,9 @@ private struct TimerView: View {
             window.level = .normal
             window.collectionBehavior.remove(.canJoinAllSpaces)
             window.collectionBehavior.remove(.fullScreenAuxiliary)
-            attemptPendingDisplayFullscreenEntry()
-            schedulePendingDisplayFullscreenEntry()
-        case .waitForStandardWindow:
-            pendingDisplayFullscreenEntry = true
-            fullscreenPromotionAttempts = 0
-            guard timer.prepareForDisplayFullscreen() else {
-                pendingDisplayFullscreenEntry = false
-                return
+            if entryAction == .toggleNow {
+                attemptPendingDisplayFullscreenEntry()
             }
-            window.level = .normal
-            window.collectionBehavior.remove(.canJoinAllSpaces)
-            window.collectionBehavior.remove(.fullScreenAuxiliary)
-            attemptPendingDisplayFullscreenEntry()
             schedulePendingDisplayFullscreenEntry()
         }
     }
@@ -1231,7 +1286,9 @@ private struct TimerView: View {
     }
 
     private func attemptPendingDisplayFullscreenEntry(for notifiedWindow: NSWindow? = nil) {
-        guard let window = displayWindow,
+        guard pendingDisplayFullscreenEntry,
+              !displayFullscreenEntryToggleRequested,
+              let window = displayWindow,
               notifiedWindow == nil || notifiedWindow === window else { return }
         switch DisplayFullscreenTransition.modeChangeAction(
             pendingEntry: pendingDisplayFullscreenEntry,
@@ -1246,33 +1303,29 @@ private struct TimerView: View {
                 displayFullscreenToggleScheduled = false
                 guard let window,
                       pendingDisplayFullscreenEntry,
+                      !displayFullscreenEntryToggleRequested,
                       displayWindow === window,
-                      !timer.borderlessWindow,
                       !window.styleMask.contains(.fullScreen) else { return }
-                pendingDisplayFullscreenEntry = false
+                guard !timer.borderlessWindow, window.styleMask.contains(.titled) else {
+                    schedulePendingDisplayFullscreenEntry()
+                    return
+                }
+                displayFullscreenEntryToggleRequested = true
                 window.toggleFullScreen(nil)
             }
         }
     }
 
     private func schedulePendingDisplayFullscreenEntry() {
-        guard pendingDisplayFullscreenEntry, !displayFullscreenToggleScheduled,
+        guard pendingDisplayFullscreenEntry, !displayFullscreenEntryToggleRequested,
+              !displayFullscreenToggleScheduled,
               fullscreenPromotionAttempts < 8 else { return }
         displayFullscreenToggleScheduled = true
         fullscreenPromotionAttempts += 1
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             displayFullscreenToggleScheduled = false
-            if pendingDisplayFullscreenEntry,
-               let window = displayWindow,
-               !timer.borderlessWindow,
-               !window.styleMask.contains(.fullScreen) {
-                pendingDisplayFullscreenEntry = false
-                window.level = .normal
-                window.collectionBehavior.remove(.canJoinAllSpaces)
-                window.collectionBehavior.remove(.fullScreenAuxiliary)
-                window.toggleFullScreen(nil)
-                return
-            }
+            guard pendingDisplayFullscreenEntry,
+                  !displayFullscreenEntryToggleRequested else { return }
             attemptPendingDisplayFullscreenEntry()
             if pendingDisplayFullscreenEntry {
                 schedulePendingDisplayFullscreenEntry()
@@ -1285,6 +1338,7 @@ private struct TimerView: View {
               window === activeWindow,
               timer.displayStyle.supportsFullscreen else { return }
         pendingDisplayFullscreenEntry = false
+        displayFullscreenEntryToggleRequested = false
         isInNativeFullscreen = true
         timer.didEnterDisplayFullscreen()
     }
@@ -1293,6 +1347,7 @@ private struct TimerView: View {
         guard let window = notification.object as? NSWindow,
               window === activeWindow else { return }
         pendingDisplayFullscreenEntry = false
+        displayFullscreenEntryToggleRequested = false
         isInNativeFullscreen = false
         timer.finishDisplayFullscreen()
     }
@@ -1304,7 +1359,10 @@ private struct TimerView: View {
         Button("Desk Clock") { timer.displayStyle = .clock }
         Divider()
         if timer.displayStyle.supportsFullscreen {
-            Button(timer.displayStyle.fullscreenTitle) { toggleDisplayFullscreen() }
+            Button(timer.isPreparingDisplayFullscreen ? "Entering Full Screen…" :
+                   (isInNativeFullscreen ? "Exit Full Screen" :
+                    timer.displayStyle.fullscreenTitle)) { toggleDisplayFullscreen() }
+                .disabled(timer.isPreparingDisplayFullscreen)
         }
         Menu("Start Preset") {
             ForEach(timer.presetNames.indices, id: \.self) { index in
@@ -1483,7 +1541,7 @@ private struct TimerView: View {
                     .accessibilityHint("Restores the previous timer and Pomodoro state")
             }
 
-            if timer.borderlessWindow && !displayFaceReadable {
+            if (timer.borderlessWindow || isInNativeFullscreen) && !displayFaceReadable {
                 Button("Return to Timer Face") { returnToTimerFace() }
                     .accessibilityHint("Rotates the cube back without changing the current session")
             }
@@ -1517,7 +1575,8 @@ private struct TimerView: View {
     }
 
     private func header(narrow: Bool, availableWidth: CGFloat) -> some View {
-        ZStack {
+        let fullscreenPhase = displayFullscreenPhase
+        return ZStack {
             HStack(spacing: 9) {
                 Image(systemName: timer.displayStyle == .cube ? "cube.fill" :
                       timer.displayStyle == .digital ? "timer" : "clock")
@@ -1543,9 +1602,14 @@ private struct TimerView: View {
                               : "arrow.up.left.and.arrow.down.right")
                             .frame(width: 31, height: 30)
                     }
-                    .help(isInNativeFullscreen ? "Exit Full Screen" : timer.displayStyle.fullscreenTitle)
-                    .accessibilityLabel(isInNativeFullscreen
-                                        ? "Exit Full Screen" : timer.displayStyle.fullscreenTitle)
+                    .help(fullscreenPhase == .preparing ? "Entering Full Screen" :
+                          (fullscreenPhase == .fullscreen ? "Exit Full Screen" :
+                           timer.displayStyle.fullscreenTitle))
+                    .accessibilityLabel(fullscreenPhase == .preparing ? "Entering Full Screen" :
+                                        (fullscreenPhase == .fullscreen ? "Exit Full Screen" :
+                                         timer.displayStyle.fullscreenTitle))
+                    .disabled(!DisplayFullscreenTransition.shouldEnableFullscreenToggle(
+                        phase: fullscreenPhase))
                 }
                 Button { timer.alwaysOnTop.toggle() } label: {
                     Image(systemName: timer.alwaysOnTop ? "pin.fill" : "pin")
@@ -1561,7 +1625,7 @@ private struct TimerView: View {
                 .help("Timer, appearance, window, and sound settings")
                 .accessibilityLabel("Settings")
             }
-            if !isInNativeFullscreen && !timer.isPreparingDisplayFullscreen {
+            if DisplayFullscreenTransition.shouldShowDisplayPicker(phase: fullscreenPhase) {
                 HStack(spacing: 2) {
                     ForEach(TimerDisplayStyle.allCases) { style in
                         let selected = timer.displayStyle == style
@@ -1679,6 +1743,9 @@ private struct TimerView: View {
                       pomodoroSuspended: timer.hasSuspendedPomodoro,
                       displayAction: countdownActionName,
                       displayStyle: timer.displayStyle,
+                      isFullscreen: isInNativeFullscreen,
+                      isPreparingFullscreen: timer.isPreparingDisplayFullscreen,
+                      onToggleFullscreen: toggleDisplayFullscreen,
                       onDisplayClick: { timer.startOrPause() },
                       onOpenSettings: { showingSettings = true },
                       onOpenCustomCountdown: { showingCustomCountdown = true },

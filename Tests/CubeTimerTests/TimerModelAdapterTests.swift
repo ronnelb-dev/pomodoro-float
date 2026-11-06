@@ -164,7 +164,7 @@ final class TimerModelAdapterTests: XCTestCase {
         model.reset()
     }
 
-    func testDisplayFullscreenPromotionIsRejectedForCubeAndLeavesWindowModeUntouched() {
+    func testCubeFullscreenTemporarilyPromotesAndRestoresBorderlessWindow() {
         let suite = "CubeTimerCubeFullscreenModeTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
@@ -172,9 +172,23 @@ final class TimerModelAdapterTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        model.displayStyle = .cube
+        model.start()
+        let activeSession = model.sessionSnapshot
 
-        XCTAssertFalse(model.prepareForDisplayFullscreen())
+        XCTAssertTrue(model.prepareForDisplayFullscreen())
+        XCTAssertTrue(model.isPreparingDisplayFullscreen)
+        XCTAssertFalse(model.borderlessWindow)
+        XCTAssertEqual(model.sessionSnapshot, activeSession)
+        XCTAssertTrue(defaults.bool(forKey: "borderlessWindow"))
+
+        model.didEnterDisplayFullscreen()
+        XCTAssertTrue(model.isDisplayFullscreen)
+        model.finishDisplayFullscreen()
+        XCTAssertFalse(model.isDisplayFullscreen)
+        XCTAssertFalse(model.isPreparingDisplayFullscreen)
         XCTAssertTrue(model.borderlessWindow)
+        XCTAssertEqual(model.sessionSnapshot, activeSession)
         XCTAssertTrue(defaults.bool(forKey: "borderlessWindow"))
         model.reset()
     }

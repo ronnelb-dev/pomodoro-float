@@ -39,6 +39,8 @@ extension Notification.Name {
     static let cubeTimerWindowModeDidChange = Notification.Name("CubeTimerWindowModeDidChange")
     static let cubeTimerDisplayFullscreenExitRequested =
         Notification.Name("CubeTimerDisplayFullscreenExitRequested")
+    static let cubeTimerDisplayFullscreenEntryRequested =
+        Notification.Name("CubeTimerDisplayFullscreenEntryRequested")
 }
 
 protocol CompletionNotificationClient: AnyObject {
@@ -122,7 +124,7 @@ enum TimerDisplayStyle: String, CaseIterable, Identifiable {
         }
     }
 
-    var supportsFullscreen: Bool { self == .digital || self == .clock }
+    var supportsFullscreen: Bool { true }
 
     var presetTilesStartImmediately: Bool { self == .cube }
 

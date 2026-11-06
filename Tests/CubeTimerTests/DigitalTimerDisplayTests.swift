@@ -53,13 +53,12 @@ final class DigitalTimerDisplayTests: XCTestCase {
         XCTAssertFalse(TimerDisplayStyle.clock.presetTilesStartImmediately)
     }
 
-    func testFullscreenExitHintSupportsDigitalAndClockForThreeSeconds() {
-        XCTAssertTrue(DisplayFullscreenHint.shouldShow(displayStyle: .digital,
-                                                       isFullscreen: true))
-        XCTAssertTrue(DisplayFullscreenHint.shouldShow(displayStyle: .clock,
-                                                       isFullscreen: true))
-        XCTAssertFalse(DisplayFullscreenHint.shouldShow(displayStyle: .cube,
-                                                        isFullscreen: true))
+    func testAllDisplayStylesSupportFullscreenAndShowTheExitHint() {
+        for style in TimerDisplayStyle.allCases {
+            XCTAssertTrue(style.supportsFullscreen)
+            XCTAssertTrue(DisplayFullscreenHint.shouldShow(displayStyle: style,
+                                                            isFullscreen: true))
+        }
         XCTAssertFalse(DisplayFullscreenHint.shouldShow(displayStyle: .clock,
                                                         isFullscreen: false))
         XCTAssertEqual(DisplayFullscreenHint.durationSeconds, 3)
@@ -67,7 +66,7 @@ final class DigitalTimerDisplayTests: XCTestCase {
 
     func testFullscreenTransitionWaitsForBorderlessPromotion() {
         XCTAssertEqual(
-            DisplayFullscreenTransition.entryAction(
+            DisplayFullscreenTransition.toggleAction(
                 supportsFullscreen: true, isNativeFullscreen: false, isBorderless: true),
             .waitForStandardWindow)
         XCTAssertEqual(
@@ -80,19 +79,29 @@ final class DigitalTimerDisplayTests: XCTestCase {
             .toggleNow)
     }
 
-    func testFullscreenTransitionTogglesImmediatelyForStandardDigitalAndClockWindows() {
-        for style in [TimerDisplayStyle.digital, .clock] {
+    func testFullscreenTransitionTogglesImmediatelyForEveryStandardDisplayStyle() {
+        for style in TimerDisplayStyle.allCases {
             XCTAssertEqual(
-                DisplayFullscreenTransition.entryAction(
+                DisplayFullscreenTransition.toggleAction(
                     supportsFullscreen: style.supportsFullscreen,
                     isNativeFullscreen: false, isBorderless: false),
                 .toggleNow)
         }
     }
 
-    func testFullscreenTransitionIgnoresCubeAndStaleNotifications() {
+    func testFullscreenTransitionExitsEveryStyleWhenAlreadyFullscreen() {
+        for style in TimerDisplayStyle.allCases {
+            XCTAssertEqual(
+                DisplayFullscreenTransition.toggleAction(
+                    supportsFullscreen: style.supportsFullscreen,
+                    isNativeFullscreen: true, isBorderless: false),
+                .exitFullscreen)
+        }
+    }
+
+    func testFullscreenTransitionRejectsUnsupportedStylesAndIgnoresStaleNotifications() {
         XCTAssertEqual(
-            DisplayFullscreenTransition.entryAction(
+            DisplayFullscreenTransition.toggleAction(
                 supportsFullscreen: false, isNativeFullscreen: false, isBorderless: false),
             .reject)
         XCTAssertEqual(
@@ -103,6 +112,18 @@ final class DigitalTimerDisplayTests: XCTestCase {
             DisplayFullscreenTransition.modeChangeAction(
                 pendingEntry: true, windowMatches: false, isBorderless: false),
             .ignore)
+    }
+
+    func testDisplayPickerStaysVisibleInEveryFullscreenTransitionPhase() {
+        XCTAssertTrue(DisplayFullscreenTransition.shouldShowDisplayPicker(phase: .windowed))
+        XCTAssertTrue(DisplayFullscreenTransition.shouldShowDisplayPicker(phase: .preparing))
+        XCTAssertTrue(DisplayFullscreenTransition.shouldShowDisplayPicker(phase: .fullscreen))
+    }
+
+    func testFullscreenButtonCannotBeClickedDuringPendingTransition() {
+        XCTAssertTrue(DisplayFullscreenTransition.shouldEnableFullscreenToggle(phase: .windowed))
+        XCTAssertFalse(DisplayFullscreenTransition.shouldEnableFullscreenToggle(phase: .preparing))
+        XCTAssertTrue(DisplayFullscreenTransition.shouldEnableFullscreenToggle(phase: .fullscreen))
     }
 
     func testDeskClockFormatsLocalizedTimeWithSecondsAndCompactDate() {
