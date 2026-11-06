@@ -107,7 +107,7 @@ struct DeskClockPanel: View {
                     }
                     Text(presentation.dateLine)
                         .font(.system(size: max(11, dateSize), weight: .semibold,
-                                      design: .rounded))
+                                      design: .monospaced))
                         .tracking(compact ? 0.8 : 1.2)
                         .lineLimit(1)
                         .minimumScaleFactor(0.55)
@@ -137,7 +137,7 @@ struct DeskClockPanel: View {
             if let dayPeriod {
                 Text(dayPeriod)
                     .font(.system(size: max(11, digitHeight * 0.24),
-                                  weight: .semibold, design: .rounded))
+                                  weight: .semibold, design: .monospaced))
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
                     .foregroundStyle(colors.secondary)
