@@ -16,8 +16,10 @@ enum DeskClockDayPeriodPlacement: Equatable {
 enum DeskClockFormatter {
     static func presentation(for date: Date, locale: Locale = .current,
                              calendar: Calendar = .current,
-                             timeZone: TimeZone = .current) -> DeskClockPresentation {
-        let time = formatted(date, template: "jmmss", locale: locale,
+                             timeZone: TimeZone = .current,
+                             use24HourTime: Bool = false) -> DeskClockPresentation {
+        let timeTemplate = use24HourTime ? "HHmmss" : "jmmss"
+        let time = formatted(date, template: timeTemplate, locale: locale,
                              calendar: calendar, timeZone: timeZone)
         let localizedDayPeriod = formatted(date, template: "a", locale: locale,
                                            calendar: calendar, timeZone: timeZone)
@@ -72,10 +74,12 @@ struct DeskClockPanel: View {
     let colors: UIColors
     let accent: Color
     let compact: Bool
+    let use24HourTime: Bool
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            let presentation = DeskClockFormatter.presentation(for: context.date)
+            let presentation = DeskClockFormatter.presentation(
+                for: context.date, use24HourTime: use24HourTime)
             GeometryReader { geometry in
                 let digitHeight = DeskClockLayout.digitHeight(
                     containerSize: geometry.size, timeLabel: presentation.time,

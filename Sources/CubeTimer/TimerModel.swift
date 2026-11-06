@@ -141,6 +141,7 @@ final class TimerModel: ObservableObject {
     static let defaultDurations = [300, 600, 1500, 3000, 3600]
     static let displayStyleKey = "timerDisplayStyle"
     static let showMenuBarTimerKey = "showMenuBarTimer"
+    static let use24HourTimeKey = "deskClockUse24HourTime"
     static func spokenPresetName(_ index: Int) -> String {
         "\(defaultDurations[index] / 60)-minute preset"
     }
@@ -167,6 +168,7 @@ final class TimerModel: ObservableObject {
         didSet { defaults.set(displayStyle.rawValue, forKey: Self.displayStyleKey) }
     }
     @Published private(set) var showMenuBarTimer: Bool
+    @Published private(set) var use24HourTime: Bool
     @Published private(set) var sessionSnapshot: TimerSessionSnapshot
     @Published private(set) var preferences: TimerSessionPreferences
     @Published private(set) var presetNames: [String]
@@ -261,6 +263,7 @@ final class TimerModel: ObservableObject {
         autoStartNextPhase = coordinator.autoStartNextPhase
         displayStyle = TimerDisplayStyle(rawValue: defaults.string(forKey: Self.displayStyleKey) ?? "") ?? .cube
         showMenuBarTimer = defaults.bool(forKey: Self.showMenuBarTimerKey)
+        use24HourTime = defaults.bool(forKey: Self.use24HourTimeKey)
         presetNames = coordinator.presetNames
         presetRoles = coordinator.presetRoles
         preferences = TimerSessionPreferences(presetSeconds: coordinator.presetSeconds,
@@ -325,6 +328,12 @@ final class TimerModel: ObservableObject {
         guard showMenuBarTimer != enabled else { return }
         showMenuBarTimer = enabled
         defaults.set(enabled, forKey: Self.showMenuBarTimerKey)
+    }
+
+    func setUse24HourTime(_ enabled: Bool) {
+        guard use24HourTime != enabled else { return }
+        use24HourTime = enabled
+        defaults.set(enabled, forKey: Self.use24HourTimeKey)
     }
 
     @discardableResult

@@ -1156,7 +1156,8 @@ private struct TimerView: View {
     }
 
     private func deskClockPanel(compact: Bool) -> some View {
-        DeskClockPanel(colors: colors, accent: accent, compact: compact)
+        DeskClockPanel(colors: colors, accent: accent, compact: compact,
+                       use24HourTime: timer.use24HourTime)
     }
 
     private var fullscreenExitHint: some View {
@@ -2442,6 +2443,16 @@ private struct SettingsView: View {
                     .accessibilityHidden(true)
             }
             .foregroundStyle(colors.secondary)
+            Divider().padding(.vertical, 1)
+            sectionTitle("DESK CLOCK")
+            Toggle("Use 24-hour time", isOn: Binding(
+                get: { timer.use24HourTime },
+                set: { timer.setUse24HourTime($0) }
+            ))
+                .toggleStyle(.switch)
+                .accessibilityHint("Shows Desk Clock in a locale-aware 24-hour format")
+            helper("When off, Desk Clock follows your Mac’s time format preference. This affects Desk Clock only.")
+            Divider().padding(.vertical, 1)
         }
     }
 

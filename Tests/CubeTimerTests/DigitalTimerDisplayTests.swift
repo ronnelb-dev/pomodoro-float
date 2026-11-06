@@ -120,12 +120,27 @@ final class DigitalTimerDisplayTests: XCTestCase {
         XCTAssertEqual(twelveHour.dayPeriodPlacement, .trailing)
         XCTAssertEqual(twelveHour.dateLine, "Wed, 1/3/2024")
 
+        let forcedTwentyFourHour = DeskClockFormatter.presentation(
+            for: date, locale: Locale(identifier: "en_US"), calendar: calendar,
+            timeZone: utc, use24HourTime: true)
+        XCTAssertEqual(forcedTwentyFourHour.time, "13:05:09")
+        XCTAssertEqual(forcedTwentyFourHour.segmentTime, "13:05:09")
+        XCTAssertNil(forcedTwentyFourHour.dayPeriod)
+        XCTAssertEqual(forcedTwentyFourHour.dateLine, "Wed, 1/3/2024")
+
         let twentyFourHour = DeskClockFormatter.presentation(
             for: date, locale: Locale(identifier: "en_GB"), calendar: calendar, timeZone: utc)
         XCTAssertEqual(twentyFourHour.time, "13:05:09")
         XCTAssertEqual(twentyFourHour.segmentTime, "13:05:09")
         XCTAssertNil(twentyFourHour.dayPeriod)
         XCTAssertEqual(twentyFourHour.dateLine, "Wed, 03/01/2024")
+
+        let finnishTwentyFourHour = DeskClockFormatter.presentation(
+            for: date, locale: Locale(identifier: "fi_FI"), calendar: calendar,
+            timeZone: utc, use24HourTime: true)
+        XCTAssertEqual(finnishTwentyFourHour.time, "13.05.09")
+        XCTAssertNil(finnishTwentyFourHour.segmentTime)
+        XCTAssertNil(finnishTwentyFourHour.dayPeriod)
     }
 
     func testDeskClockSupportsLocalizedDigitsAndLeadingDayPeriod() {

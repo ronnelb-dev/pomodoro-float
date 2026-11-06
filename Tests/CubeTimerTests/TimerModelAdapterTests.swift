@@ -107,6 +107,31 @@ final class TimerModelAdapterTests: XCTestCase {
         withExtendedLifetime(cancellable) {}
     }
 
+    func testDeskClockTwentyFourHourPreferenceDefaultsOffPersistsAndDoesNotChangeSession() {
+        let suite = "CubeTimer24HourClockPreferenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let model = TimerModel(defaults: defaults, notificationsEnabled: false)
+        XCTAssertFalse(model.use24HourTime)
+        XCTAssertNil(defaults.object(forKey: TimerModel.use24HourTimeKey))
+
+        model.start()
+        let activeSession = model.sessionSnapshot
+        model.setUse24HourTime(true)
+        XCTAssertTrue(model.use24HourTime)
+        XCTAssertTrue(defaults.bool(forKey: TimerModel.use24HourTimeKey))
+        XCTAssertEqual(model.sessionSnapshot, activeSession)
+
+        model.reset()
+        let reopenedModel = TimerModel(defaults: defaults, notificationsEnabled: false)
+        XCTAssertTrue(reopenedModel.use24HourTime)
+        reopenedModel.setUse24HourTime(false)
+        XCTAssertFalse(defaults.bool(forKey: TimerModel.use24HourTimeKey))
+        reopenedModel.reset()
+    }
+
     func testDisplayFullscreenTemporarilyUsesStandardWindowWithoutSavingModeChange() {
         let suite = "CubeTimerDisplayFullscreenModeTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
