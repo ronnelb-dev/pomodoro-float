@@ -3,6 +3,17 @@ import AppKit
 @MainActor
 final class TimerApplicationDelegate: NSObject, NSApplicationDelegate {
     static let timerWindowIdentifier = NSUserInterfaceItemIdentifier("pomodoro-float.timer-window")
+    static let timerWindowSceneID = "pomodoro-float.timer-window-scene"
+    static let helpWindowSceneID = "pomodoro-float.help-window-scene"
+
+    static func presentTimerWindowIfAvailable() -> Bool {
+        guard let timerWindow = NSApp.windows.first(where: isTimerWindow) else { return false }
+        if timerWindow.isMiniaturized {
+            timerWindow.deminiaturize(nil)
+        }
+        timerWindow.makeKeyAndOrderFront(nil)
+        return true
+    }
 
     func applicationShouldHandleReopen(_ sender: NSApplication,
                                       hasVisibleWindows: Bool) -> Bool {

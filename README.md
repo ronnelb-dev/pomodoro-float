@@ -17,6 +17,7 @@ Pomodoro Float is a native macOS focus timer with three displays: a rotatable 3D
 - Choose Cube or Digital display; the choice is saved between launches.
 - Switch to Desk Clock to show the localized current time with seconds, weekday, and date; the clock can be used while a timer continues running.
 - Switch between the full standard window and a compact floating window. Keep the timer visible while working, and resize either window.
+- Optionally show the current timer and quick controls in the menu bar; the menu can pause or resume and start saved presets.
 - Run customizable Pomodoro focus and break cycles, with progress, completion alerts, and session restore.
 - Start a one-off countdown from 00:01 to 99:59 without changing saved presets, or use the MM:SS stopwatch.
 - Personalize the five preset slots with names and Focus, Short Break, or General roles; Pomodoro follows the semantic roles rather than fixed positions.
@@ -67,6 +68,8 @@ swift test
 - **Countdown or stopwatch:** Use the mode buttons below the presets in the standard window, the **Timer** menu, or the floating timer's right-click menu.
 - **Desk Clock:** Choose **Clock** in the display picker or floating menu. The time, weekday, and date follow the Mac's locale and 12/24-hour preference. Digital and Clock modes can enter full screen; press **Esc** to return.
 - **Settings:** Press **Command-,** to edit preset names, durations, and Focus/Short Break roles; configure Pomodoro cycles, appearance, sounds, and window behavior. Use **Reset Presets to Defaults** to restore the built-in slots without resetting an active timer.
+- **Menu bar timer:** Enable **Show Timer in Menu Bar** in Settings > Window. Use its menu to pause or resume, start a saved preset, open the main timer, or view Help. Hiding the menu bar item does not stop the timer.
+- **Help:** Choose **Pomodoro Float Help** from the Help menu or the menu bar timer for a reference to gestures, shortcuts, and timer modes.
 - **Floating window:** Press **Command-Shift-B** to toggle it. **Control-drag** the cube to move the floating window; hold **Control** and drag its lower-right grip to resize it. Right-click for timer and window controls.
 
 Pomodoro defaults are 25 minutes of focus, a 5-minute short break, and a 15-minute long break after four focuses. Timer sessions and preferences are saved across launches.

@@ -140,6 +140,7 @@ final class TimerModel: ObservableObject {
     static let defaultPresetNames = TimerSessionCoordinator.defaultPresetNames
     static let defaultDurations = [300, 600, 1500, 3000, 3600]
     static let displayStyleKey = "timerDisplayStyle"
+    static let showMenuBarTimerKey = "showMenuBarTimer"
     static func spokenPresetName(_ index: Int) -> String {
         "\(defaultDurations[index] / 60)-minute preset"
     }
@@ -165,6 +166,7 @@ final class TimerModel: ObservableObject {
     @Published var displayStyle: TimerDisplayStyle {
         didSet { defaults.set(displayStyle.rawValue, forKey: Self.displayStyleKey) }
     }
+    @Published private(set) var showMenuBarTimer: Bool
     @Published private(set) var sessionSnapshot: TimerSessionSnapshot
     @Published private(set) var preferences: TimerSessionPreferences
     @Published private(set) var presetNames: [String]
@@ -258,6 +260,7 @@ final class TimerModel: ObservableObject {
         volume = coordinator.volume
         autoStartNextPhase = coordinator.autoStartNextPhase
         displayStyle = TimerDisplayStyle(rawValue: defaults.string(forKey: Self.displayStyleKey) ?? "") ?? .cube
+        showMenuBarTimer = defaults.bool(forKey: Self.showMenuBarTimerKey)
         presetNames = coordinator.presetNames
         presetRoles = coordinator.presetRoles
         preferences = TimerSessionPreferences(presetSeconds: coordinator.presetSeconds,
@@ -316,6 +319,12 @@ final class TimerModel: ObservableObject {
         coordinator.setBorderlessWindow(enabled)
         borderlessWindow = temporaryStandardWindowForDisplayFullscreen
             ? false : coordinator.borderlessWindow
+    }
+
+    func setShowMenuBarTimer(_ enabled: Bool) {
+        guard showMenuBarTimer != enabled else { return }
+        showMenuBarTimer = enabled
+        defaults.set(enabled, forKey: Self.showMenuBarTimerKey)
     }
 
     @discardableResult

@@ -10,7 +10,7 @@ struct CubeTimerApp: App {
     @State private var showingCustomCountdown = false
 
     var body: some Scene {
-        WindowGroup("Pomodoro Float") {
+        WindowGroup("Pomodoro Float", id: TimerApplicationDelegate.timerWindowSceneID) {
             TimerView(showingSettings: $showingSettings,
                       showingCustomCountdown: $showingCustomCountdown)
                 .environmentObject(timer)
@@ -78,7 +78,31 @@ struct CubeTimerApp: App {
                     .disabled(timer.isDisplayFullscreen || timer.isPreparingDisplayFullscreen)
                 Button("Always on Top") { timer.alwaysOnTop.toggle() }
             }
+            TimerHelpCommands()
         }
+
+        Window("Pomodoro Float Help", id: TimerApplicationDelegate.helpWindowSceneID) {
+            TimerHelpView()
+        }
+        .defaultSize(width: 540, height: 620)
+
+        MenuBarExtra(isInserted: Binding(
+            get: { timer.showMenuBarTimer },
+            set: { timer.setShowMenuBarTimer($0) }
+        )) {
+            MenuBarTimerMenu()
+                .environmentObject(timer)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: MenuBarTimerIndicator.systemImage(
+                    isRunning: timer.isRunning, isPaused: timer.isPaused,
+                    isComplete: timer.isComplete))
+                Text(timer.timeLabel).monospacedDigit()
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Pomodoro Float, \(timer.accessibilityValue)")
+        }
+        .menuBarExtraStyle(.menu)
     }
 }
 
@@ -1537,15 +1561,32 @@ private struct TimerView: View {
                 .accessibilityLabel("Settings")
             }
             if !isInNativeFullscreen && !timer.isPreparingDisplayFullscreen {
-                Picker("Timer design", selection: $timer.displayStyle) {
+                HStack(spacing: 2) {
                     ForEach(TimerDisplayStyle.allCases) { style in
-                        Text(style.title).tag(style)
+                        let selected = timer.displayStyle == style
+                        Button { timer.displayStyle = style } label: {
+                            Text(style.title)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 26)
+                                .foregroundStyle(selected ? colors.text : colors.secondary)
+                                .background(selected ? colors.background : .clear,
+                                            in: RoundedRectangle(cornerRadius: 6))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(style.title)
+                        .accessibilityAddTraits(selected ? .isSelected : [])
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                .padding(3)
+                .background(colors.panel, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(colors.edge, lineWidth: 1)
+                }
                 .frame(width: TimerWindowLayout.headerPickerWidth(
                     availableWidth: availableWidth, compact: narrow))
+                .accessibilityElement(children: .contain)
                 .accessibilityLabel("Timer design")
             }
         }
@@ -1996,13 +2037,31 @@ private struct SettingsView: View {
                 Button("Done") { timer.setCycleTarget(cycleTargetSelection); dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
-            Picker("Settings section", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+            HStack(spacing: 3) {
+                ForEach(Tab.allCases, id: \.self) { section in
+                    let selected = tab == section
+                    Button { tab = section } label: {
+                        Text(section.rawValue)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 30)
+                            .foregroundStyle(selected ? colors.text : colors.secondary)
+                            .background(selected ? colors.background : .clear,
+                                        in: RoundedRectangle(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(section.rawValue)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .padding(3)
+            .background(colors.panel, in: RoundedRectangle(cornerRadius: 9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(colors.edge, lineWidth: 1)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Settings section")
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -2196,6 +2255,13 @@ private struct SettingsView: View {
                 .disabled(timer.isDisplayFullscreen || timer.isPreparingDisplayFullscreen)
             Toggle("Always on Top", isOn: $timer.alwaysOnTop)
                 .toggleStyle(.switch)
+            Toggle("Show Timer in Menu Bar", isOn: Binding(
+                get: { timer.showMenuBarTimer },
+                set: { timer.setShowMenuBarTimer($0) }
+            ))
+                .toggleStyle(.switch)
+                .accessibilityHint("Shows the timer and quick controls in the menu bar. Hiding it does not stop the timer.")
+            helper("The menu bar timer shows the current time and state, lets you pause or resume, and starts saved presets. Remove it here or from the menu bar at any time.")
             helper("Standard window: drag an edge or corner to resize. Borderless window: Control-drag the cube to move it; hold Control and drag the lower-right grip to resize. Control-click or right-click the cube for its menu. The time stays visible when its face turns away.")
         }
     }
