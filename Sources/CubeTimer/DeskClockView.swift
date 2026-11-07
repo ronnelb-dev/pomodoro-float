@@ -74,6 +74,7 @@ struct DeskClockPanel: View {
     let colors: UIColors
     let accent: Color
     let compact: Bool
+    let borderless: Bool
     let use24HourTime: Bool
 
     var body: some View {
@@ -81,21 +82,29 @@ struct DeskClockPanel: View {
             let presentation = DeskClockFormatter.presentation(
                 for: context.date, use24HourTime: use24HourTime)
             GeometryReader { geometry in
-                let digitHeight = DeskClockLayout.digitHeight(
-                    containerSize: geometry.size, timeLabel: presentation.time,
-                    compact: compact)
-                let dateSize = min(geometry.size.width * (compact ? 0.05 : 0.055),
-                                   geometry.size.height * 0.11)
+                let borderlessMetrics = borderless
+                    ? DeskClockLayout.borderlessMetrics(containerSize: geometry.size,
+                                                        presentation: presentation)
+                    : nil
+                let digitHeight = borderlessMetrics?.digitHeight ??
+                    DeskClockLayout.digitHeight(containerSize: geometry.size,
+                                                timeLabel: presentation.time,
+                                                compact: compact)
+                let dateSize = borderlessMetrics?.secondaryLabelSize ??
+                    min(geometry.size.width * (compact ? 0.05 : 0.055),
+                        geometry.size.height * 0.11)
+                let dayPeriodSize = borderlessMetrics?.secondaryLabelSize ??
+                    max(11, digitHeight * 0.24)
                 VStack(spacing: compact ? 8 : 16) {
                     if let segmentTime = presentation.segmentTime {
                         HStack(alignment: .center, spacing: max(4, digitHeight * 0.08)) {
                             if presentation.dayPeriodPlacement == .leading {
-                                dayPeriodLabel(presentation.dayPeriod, digitHeight: digitHeight)
+                                dayPeriodLabel(presentation.dayPeriod, fontSize: dayPeriodSize)
                             }
                             SevenSegmentTimeDisplay(timeLabel: segmentTime,
                                                     height: digitHeight, accent: accent)
                             if presentation.dayPeriodPlacement != .leading {
-                                dayPeriodLabel(presentation.dayPeriod, digitHeight: digitHeight)
+                                dayPeriodLabel(presentation.dayPeriod, fontSize: dayPeriodSize)
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -110,7 +119,8 @@ struct DeskClockPanel: View {
                             .accessibilityHidden(true)
                     }
                     Text(presentation.dateLine)
-                        .font(.system(size: max(11, dateSize), weight: .semibold,
+                        .font(.system(size: borderlessMetrics?.secondaryLabelSize ??
+                                      max(11, dateSize), weight: .semibold,
                                       design: .monospaced))
                         .tracking(compact ? 0.8 : 1.2)
                         .lineLimit(1)
@@ -136,11 +146,11 @@ struct DeskClockPanel: View {
         }
     }
 
-    private func dayPeriodLabel(_ dayPeriod: String?, digitHeight: CGFloat) -> some View {
+    private func dayPeriodLabel(_ dayPeriod: String?, fontSize: CGFloat) -> some View {
         Group {
             if let dayPeriod {
                 Text(dayPeriod)
-                    .font(.system(size: max(11, digitHeight * 0.24),
+                    .font(.system(size: fontSize,
                                   weight: .semibold, design: .monospaced))
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)

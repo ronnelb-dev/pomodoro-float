@@ -26,8 +26,52 @@ enum DisplayFullscreenExitPolicy {
 }
 
 enum DeskClockLayout {
+    struct BorderlessMetrics: Equatable {
+        let digitHeight: CGFloat
+        let secondaryLabelSize: CGFloat
+    }
+
     static func fullscreenPanelWidth(availableWidth: CGFloat) -> CGFloat {
         max(0, availableWidth * 0.85)
+    }
+
+    static func borderlessMetrics(containerSize: CGSize,
+                                  presentation: DeskClockPresentation) -> BorderlessMetrics {
+        let inset: CGFloat = 12
+        let verticalSpacing: CGFloat = 8
+        let secondaryScale: CGFloat = 0.34
+        let availableWidth = max(0, containerSize.width - inset * 2)
+        let availableHeight = max(0, containerSize.height - inset * 2 - verticalSpacing)
+        let timeLabel = presentation.segmentTime ?? presentation.time
+        let timeRatio = DigitalTimerLayout.aspectRatio(for: timeLabel)
+        let separateDayPeriod = presentation.segmentTime != nil ? presentation.dayPeriod : nil
+        let dayPeriodRatio = separateDayPeriod.map {
+            dayPeriodWidthPerPoint($0) * secondaryScale
+        } ?? 0
+
+        let widthLimitedHeight: CGFloat
+        if dayPeriodRatio > 0 {
+            let dynamicSpacingRatio: CGFloat = 0.08
+            let dynamicSpacingHeight = availableWidth /
+                (timeRatio + dayPeriodRatio + dynamicSpacingRatio)
+            widthLimitedHeight = dynamicSpacingHeight * dynamicSpacingRatio >= 4
+                ? dynamicSpacingHeight
+                : max(0, (availableWidth - 4) / (timeRatio + dayPeriodRatio))
+        } else {
+            widthLimitedHeight = availableWidth / timeRatio
+        }
+
+        let heightLimitedHeight = availableHeight / (1 + secondaryScale * 1.2)
+        let digitHeight = min(widthLimitedHeight, heightLimitedHeight)
+        return BorderlessMetrics(digitHeight: digitHeight,
+                                 secondaryLabelSize: max(11, digitHeight * secondaryScale))
+    }
+
+    private static func dayPeriodWidthPerPoint(_ dayPeriod: String) -> CGFloat {
+        let measurementSize: CGFloat = 1
+        let font = NSFont.monospacedSystemFont(ofSize: measurementSize, weight: .semibold)
+        return (dayPeriod as NSString)
+            .size(withAttributes: [.font: font]).width / measurementSize
     }
 
     static func digitHeight(containerSize: CGSize, timeLabel: String,

@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import CubeTimer
 
 final class DigitalTimerDisplayTests: XCTestCase {
@@ -211,6 +212,95 @@ final class DigitalTimerDisplayTests: XCTestCase {
         XCTAssertLessThanOrEqual(
             compactHeight * DigitalTimerLayout.aspectRatio(for: time),
             compactSize.width - 24 + 0.001)
+    }
+
+    func testBorderlessClockUsesSegmentWidthAndScalesItsSupportingLabels() {
+        let presentation = DeskClockPresentation(
+            time: "1:05:09\u{202F}PM", segmentTime: "1:05:09", dayPeriod: "PM",
+            dayPeriodPlacement: .trailing, dateLine: "Wed, 1/3/2024")
+        let panelSize = CGSize(width: 216, height: 216)
+        let metrics = DeskClockLayout.borderlessMetrics(
+            containerSize: panelSize, presentation: presentation)
+        let currentCompactHeight = DeskClockLayout.digitHeight(
+            containerSize: panelSize, timeLabel: presentation.time, compact: true)
+
+        XCTAssertGreaterThan(metrics.digitHeight, currentCompactHeight)
+        XCTAssertGreaterThan(metrics.secondaryLabelSize, 11)
+
+        let renderedTimeWidth = metrics.digitHeight *
+            DigitalTimerLayout.aspectRatio(for: presentation.segmentTime!)
+        let dayPeriodFont = NSFont.monospacedSystemFont(
+            ofSize: metrics.secondaryLabelSize, weight: .semibold)
+        let dayPeriodWidth = (presentation.dayPeriod! as NSString)
+            .size(withAttributes: [.font: dayPeriodFont]).width
+        let dayPeriodSpacing = max(4, metrics.digitHeight * 0.08)
+        XCTAssertLessThanOrEqual(renderedTimeWidth + dayPeriodWidth + dayPeriodSpacing,
+                                 panelSize.width - 24 + 0.001)
+        XCTAssertLessThanOrEqual(metrics.digitHeight + metrics.secondaryLabelSize * 1.2 + 8,
+                                 panelSize.height - 24 + 0.001)
+    }
+
+    func testBorderlessClockFitsLocalizedFormatsAcrossFloatingWindowSizes() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: 2024, month: 1, day: 3,
+                                                       hour: 13, minute: 5, second: 9))!
+        let presentations = [
+            DeskClockFormatter.presentation(
+                for: date, locale: Locale(identifier: "en_US"),
+                calendar: calendar, timeZone: utc),
+            DeskClockFormatter.presentation(
+                for: date, locale: Locale(identifier: "en_US"),
+                calendar: calendar, timeZone: utc, use24HourTime: true),
+            DeskClockFormatter.presentation(
+                for: date, locale: Locale(identifier: "zh_TW"),
+                calendar: calendar, timeZone: utc),
+            DeskClockFormatter.presentation(
+                for: date, locale: Locale(identifier: "ar_EG"),
+                calendar: calendar, timeZone: utc)
+        ]
+        var minimumMetrics: DeskClockLayout.BorderlessMetrics?
+        var resizedMetrics: DeskClockLayout.BorderlessMetrics?
+
+        for windowSide: CGFloat in [240, 320, 850] {
+            let panelSize = CGSize(width: windowSide - 24, height: windowSide - 24)
+            for presentation in presentations {
+                let metrics = DeskClockLayout.borderlessMetrics(
+                    containerSize: panelSize, presentation: presentation)
+                let segmentTime = presentation.segmentTime ?? presentation.time
+                let visibleDayPeriod = presentation.segmentTime == nil
+                    ? nil : presentation.dayPeriod
+                let timeWidth = metrics.digitHeight *
+                    DigitalTimerLayout.aspectRatio(for: segmentTime)
+                let dayPeriodFont = NSFont.monospacedSystemFont(
+                    ofSize: metrics.secondaryLabelSize, weight: .semibold)
+                let dayPeriodWidth = visibleDayPeriod.map {
+                    ($0 as NSString).size(withAttributes: [.font: dayPeriodFont]).width
+                } ?? 0
+                let dayPeriodSpacing = visibleDayPeriod == nil
+                    ? 0 : max(4, metrics.digitHeight * 0.08)
+
+                XCTAssertGreaterThan(metrics.digitHeight, 0)
+                XCTAssertLessThanOrEqual(timeWidth + dayPeriodWidth + dayPeriodSpacing,
+                                         panelSize.width - 24 + 0.001,
+                                         "\(presentation.time) in a \(Int(windowSide))pt window")
+                XCTAssertLessThanOrEqual(
+                    metrics.digitHeight + metrics.secondaryLabelSize * 1.2 + 8,
+                    panelSize.height - 24 + 0.001)
+
+                if windowSide == 240, presentation == presentations[0] {
+                    minimumMetrics = metrics
+                }
+                if windowSide == 320, presentation == presentations[0] {
+                    resizedMetrics = metrics
+                }
+            }
+        }
+
+        XCTAssertGreaterThan(resizedMetrics!.digitHeight, minimumMetrics!.digitHeight)
+        XCTAssertGreaterThan(resizedMetrics!.secondaryLabelSize,
+                             minimumMetrics!.secondaryLabelSize)
     }
 
     func testDigitHeightUsesBothAvailableDimensionsAndFitsShortPanel() {

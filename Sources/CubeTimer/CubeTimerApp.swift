@@ -1098,7 +1098,7 @@ private struct TimerView: View {
                     .contextMenu { floatingContextMenu }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    deskClockPanel(compact: true)
+                    deskClockPanel(compact: true, borderless: true)
                         .padding(12)
                         .contextMenu { floatingContextMenu }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1212,8 +1212,9 @@ private struct TimerView: View {
                           compact: compact)
     }
 
-    private func deskClockPanel(compact: Bool) -> some View {
+    private func deskClockPanel(compact: Bool, borderless: Bool = false) -> some View {
         DeskClockPanel(colors: colors, accent: accent, compact: compact,
+                       borderless: borderless,
                        use24HourTime: timer.use24HourTime)
     }
 
