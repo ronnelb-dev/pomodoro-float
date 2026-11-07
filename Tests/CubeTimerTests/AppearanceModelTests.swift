@@ -84,8 +84,8 @@ final class AppearanceModelTests: XCTestCase {
         appearance.setTheme(.light)
 
         XCTAssertTrue(timer.isRunning)
-        XCTAssertEqual(timer.selectedPreset, 0)
-        XCTAssertEqual(timer.total, 300)
+        XCTAssertEqual(timer.selectedPreset, 2)
+        XCTAssertEqual(timer.total, 1_500)
         XCTAssertEqual(defaults.data(forKey: SavedTimerSession.key), session)
     }
 

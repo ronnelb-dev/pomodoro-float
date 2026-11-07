@@ -1725,6 +1725,9 @@ private struct TimerView: View {
     private var cubeScene: some View {
         CubeSceneView(selectedPreset: timer.selectedPreset,
                       presetSeconds: timer.presetSeconds,
+                      activePresetSeconds: timer.sessionKind == .presetCountdown &&
+                          !(timer.flowEnabled && timer.phase == .longBreak)
+                          ? Int(timer.total) : nil,
                       timeLabel: timer.timeLabel,
                       progress: timer.progress,
                       showsCountdownProgress: timer.sessionKind != .stopwatch,

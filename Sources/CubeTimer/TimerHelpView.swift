@@ -3,7 +3,7 @@ import SwiftUI
 struct TimerHelpView: View {
     private let topics: [(title: String, details: String)] = [
         ("Start and control a timer",
-         "Click the timer to start, pause, or resume. Press Space for the same action and Command-R to reset. Choose a preset and press Start; Command-1 through Command-5 start saved presets immediately."),
+         "Click the timer to start, pause, or resume. Press Space for the same action and Command-R to reset. Choose a preset and press Start; Command-1 through Command-6 start saved presets immediately."),
         ("Use the cube",
          "Drag to rotate the cube. Click a face to start that preset. Press Command-Left Arrow or Command-Right Arrow to turn a face. Right-click the cube for timer and window controls."),
         ("Use the floating window",

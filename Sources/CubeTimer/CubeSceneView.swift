@@ -8,17 +8,18 @@ struct CubeFocusProgress: Equatable {
     let target: Int
 }
 
-/// Six physical faces; the break preset repeats on the remaining extra face.
-private enum CubeFace: Int, CaseIterable {
+/// Each physical face maps to one of the six configured preset slots.
+enum CubeFace: Int, CaseIterable {
     case front, right, back, left, top, bottom
 
     var preset: Int {
         switch self {
-        case .front, .left: 0
+        case .front: 0
         case .right: 1
         case .back: 2
-        case .top: 3
-        case .bottom: 4
+        case .left: 3
+        case .top: 4
+        case .bottom: 5
         }
     }
 
@@ -27,7 +28,8 @@ private enum CubeFace: Int, CaseIterable {
         case 0: .front
         case 1: .right
         case 2: .back
-        case 3: .top
+        case 3: .left
+        case 4: .top
         default: .bottom
         }
     }
@@ -89,6 +91,31 @@ enum CubeDisplayReadability {
     }
 }
 
+struct CubePresetDurationLabel: Equatable {
+    let value: String
+    let unit: String
+
+    init(seconds: Int) {
+        if seconds % 60 == 0 {
+            value = String(seconds / 60)
+            unit = "MIN"
+        } else {
+            value = TimerEngine.display(TimeInterval(seconds))
+            unit = "M : S"
+        }
+    }
+}
+
+struct CubeActiveDisplayContent: Equatable {
+    let countdown: String
+    let presetDuration: CubePresetDurationLabel?
+
+    init(countdown: String, presetSeconds: Int?) {
+        self.countdown = countdown
+        presetDuration = presetSeconds.map(CubePresetDurationLabel.init(seconds:))
+    }
+}
+
 enum DisplayStrokeSizing {
     static func emphasis(for viewport: NSSize) -> CGFloat {
         guard viewport.width > 0, viewport.height > 0 else { return 0 }
@@ -113,6 +140,7 @@ fileprivate enum CubeHoverTarget: Equatable {
 struct CubeSceneView: NSViewRepresentable {
     let selectedPreset: Int
     let presetSeconds: [Int]
+    var activePresetSeconds: Int? = nil
     let timeLabel: String
     let progress: Double
     let showsCountdownProgress: Bool
@@ -165,7 +193,9 @@ struct CubeSceneView: NSViewRepresentable {
         view.rendersContinuously = false
         configureInteraction(view, coordinator: context.coordinator)
         context.coordinator.render(view: view, selectedPreset: selectedPreset,
-                                   presetSeconds: presetSeconds, timeLabel: timeLabel,
+                                   presetSeconds: presetSeconds,
+                                   activePresetSeconds: activePresetSeconds,
+                                   timeLabel: timeLabel,
                                    progress: progress,
                                    showsCountdownProgress: showsCountdownProgress,
                                    appearance: appearance,
@@ -179,7 +209,9 @@ struct CubeSceneView: NSViewRepresentable {
     func updateNSView(_ view: CubeSCNView, context: Context) {
         configureInteraction(view, coordinator: context.coordinator)
         context.coordinator.render(view: view, selectedPreset: selectedPreset,
-                                   presetSeconds: presetSeconds, timeLabel: timeLabel,
+                                   presetSeconds: presetSeconds,
+                                   activePresetSeconds: activePresetSeconds,
+                                   timeLabel: timeLabel,
                                    progress: progress,
                                    showsCountdownProgress: showsCountdownProgress,
                                    appearance: appearance,
@@ -260,6 +292,7 @@ struct CubeSceneView: NSViewRepresentable {
         private var lastAutomaticReadableDigits = true
         private var lastRenderedEmphasis: CGFloat = -1
         private var lastTimes: [Int] = []
+        private var lastActivePresetSeconds: Int?
         private var lastDisplay = ""
         private var lastSegments = -1
         private var lastCompleted = false
@@ -279,6 +312,7 @@ struct CubeSceneView: NSViewRepresentable {
                lastSegments >= 0 {
                 updateActiveDisplayTexture(
                     appearance: appearance, timeLabel: lastDisplay,
+                    activePresetSeconds: lastActivePresetSeconds,
                     litSegments: lastSegments, completed: lastCompleted,
                     focusMarks: lastFocusMarks, sessionLabel: lastSessionLabel,
                     automaticReadableDigits: lastAutomaticReadableDigits,
@@ -377,6 +411,7 @@ struct CubeSceneView: NSViewRepresentable {
         }
 
         func render(view: CubeSCNView, selectedPreset: Int, presetSeconds: [Int],
+                    activePresetSeconds: Int?,
                     timeLabel: String, progress: Double, showsCountdownProgress: Bool,
                     appearance: CubeAppearance,
                     automaticReadableDigits: Bool, completed: Bool,
@@ -396,7 +431,8 @@ struct CubeSceneView: NSViewRepresentable {
             let emphasis = DisplayStrokeSizing.emphasis(for: view.bounds.size)
             let segments = !showsCountdownProgress ? -1 :
                 Int(ceil((1 - min(1, max(0, progress))) * 60))
-            let displayChanged = lastDisplay != timeLabel || lastSegments != segments ||
+            let displayChanged = lastDisplay != timeLabel ||
+                lastActivePresetSeconds != activePresetSeconds || lastSegments != segments ||
                 lastCompleted != completed ||
                 lastFocusMarks != focusMarks || lastSessionLabel != sessionLabel ||
                 lastAutomaticReadableDigits != automaticReadableDigits ||
@@ -412,13 +448,15 @@ struct CubeSceneView: NSViewRepresentable {
                     updateHoverOutlines(accent: appearance.accent)
                 }
                 updateFaces(appearance: appearance, durations: presetSeconds,
-                            timeLabel: timeLabel, litSegments: segments, completed: completed,
+                            timeLabel: timeLabel, activePresetSeconds: activePresetSeconds,
+                            litSegments: segments, completed: completed,
                             focusMarks: focusMarks, sessionLabel: sessionLabel,
                             automaticReadableDigits: automaticReadableDigits,
                             emphasis: emphasis,
                             rebuildLabels: styleChanged || timesChanged,
                             faceChanged: faceChanged)
                 lastTimes = presetSeconds
+                lastActivePresetSeconds = activePresetSeconds
                 lastDisplay = timeLabel
                 lastSegments = segments
                 lastCompleted = completed
@@ -538,7 +576,8 @@ struct CubeSceneView: NSViewRepresentable {
         }
 
         private func updateFaces(appearance: CubeAppearance, durations: [Int],
-                                 timeLabel: String, litSegments: Int, completed: Bool,
+                                 timeLabel: String, activePresetSeconds: Int?,
+                                 litSegments: Int, completed: Bool,
                                  focusMarks: CubeFocusProgress?, sessionLabel: String?,
                                  automaticReadableDigits: Bool, emphasis: CGFloat,
                                  rebuildLabels: Bool, faceChanged: Bool) {
@@ -553,6 +592,7 @@ struct CubeSceneView: NSViewRepresentable {
                 if face == selectedFace {
                     updateActiveDisplayTexture(
                         appearance: appearance, timeLabel: timeLabel,
+                        activePresetSeconds: activePresetSeconds,
                         litSegments: litSegments, completed: completed,
                         focusMarks: focusMarks, sessionLabel: sessionLabel,
                         automaticReadableDigits: automaticReadableDigits,
@@ -566,14 +606,17 @@ struct CubeSceneView: NSViewRepresentable {
         }
 
         private func updateActiveDisplayTexture(appearance: CubeAppearance,
-                                                timeLabel: String, litSegments: Int,
+                                                timeLabel: String,
+                                                activePresetSeconds: Int?, litSegments: Int,
                                                 completed: Bool,
                                                 focusMarks: CubeFocusProgress?, sessionLabel: String?,
                                                 automaticReadableDigits: Bool,
                                                 emphasis: CGFloat) {
             faces[selectedFace]?.geometry?.firstMaterial?.diffuse.contents =
                 CubeFaceGraphics.display(
-                    time: timeLabel, accent: appearance.accent,
+                    content: CubeActiveDisplayContent(
+                        countdown: timeLabel, presetSeconds: activePresetSeconds),
+                    accent: appearance.accent,
                     digits: DisplayContrast.readableDigits(
                         appearance.display, automatic: automaticReadableDigits),
                     litSegments: litSegments, completed: completed,
@@ -990,10 +1033,7 @@ private enum CubeFaceGraphics {
             let ink = body.luminance > 0.58
                 ? NSColor(calibratedWhite: 0.15, alpha: 0.87)
                 : NSColor(calibratedWhite: 0.97, alpha: 0.94)
-            let wholeMinutes = seconds % 60 == 0
-            let number = wholeMinutes
-                ? String(seconds / 60)
-                : TimerEngine.display(TimeInterval(seconds))
+            let duration = CubePresetDurationLabel(seconds: seconds)
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             NSGraphicsContext.saveGraphicsState()
@@ -1002,13 +1042,14 @@ private enum CubeFaceGraphics {
             shadow.shadowColor = NSColor.black.withAlphaComponent(body.luminance > 0.58 ? 0.06 : 0.3)
             shadow.shadowBlurRadius = 16
             shadow.shadowOffset = NSSize(width: 0, height: -8)
-            number.draw(in: NSRect(x: 45, y: 335, width: 934, height: 410), withAttributes: [
-                .font: NSFont.systemFont(ofSize: wholeMinutes ? 395 : 240, weight: .heavy),
+            duration.value.draw(in: NSRect(x: 45, y: 335, width: 934, height: 410), withAttributes: [
+                .font: NSFont.systemFont(ofSize: duration.unit == "MIN" ? 395 : 240,
+                                         weight: .heavy),
                 .foregroundColor: ink,
                 .paragraphStyle: paragraph,
                 .shadow: shadow
             ])
-            (wholeMinutes ? "MIN" : "M : S").draw(
+            duration.unit.draw(
                 in: NSRect(x: 95, y: 270, width: 834, height: 125), withAttributes: [
                 .font: NSFont.systemFont(ofSize: 89, weight: .bold),
                 .foregroundColor: ink.withAlphaComponent(0.75),
@@ -1018,7 +1059,7 @@ private enum CubeFaceGraphics {
         }
     }
 
-    static func display(time: String, accent: RGBColor, digits: RGBColor,
+    static func display(content: CubeActiveDisplayContent, accent: RGBColor, digits: RGBColor,
                         litSegments: Int, completed: Bool,
                         focusMarks: CubeFocusProgress?, sessionLabel: String?,
                         emphasis: CGFloat) -> NSImage {
@@ -1065,7 +1106,7 @@ private enum CubeFaceGraphics {
                 : digitColor.withAlphaComponent(0.78)
             context.setShadow(offset: .zero, blur: 14, color: halo.cgColor)
             let positions: [CGFloat] = [250, 370, 540, 660]
-            let chars = Array(time.filter { $0.isNumber })
+            let chars = Array(content.countdown.filter { $0.isNumber })
             for (index, x) in positions.enumerated() where index < chars.count {
                 drawDigit(chars[index], x: x, y: 425, context: context,
                           color: digitColor, strokeWidth: 17 + 5 * emphasis)
@@ -1075,6 +1116,16 @@ private enum CubeFaceGraphics {
             context.fillEllipse(in: CGRect(x: 497, y: 466, width: dotSize, height: dotSize))
             context.fillEllipse(in: CGRect(x: 497, y: 541, width: dotSize, height: dotSize))
             context.setShadow(offset: .zero, blur: 0)
+            if let presetDuration = content.presetDuration {
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = .center
+                "\(presetDuration.value) \(presetDuration.unit)".draw(
+                    in: NSRect(x: 265, y: 610, width: 494, height: 54), withAttributes: [
+                        .font: NSFont.systemFont(ofSize: 44, weight: .bold),
+                        .foregroundColor: digitColor.withAlphaComponent(0.9),
+                        .paragraphStyle: paragraph
+                    ])
+            }
             if let focusMarks {
                 let count = min(8, max(2, focusMarks.target))
                 let filled = min(count, max(0, focusMarks.completed))

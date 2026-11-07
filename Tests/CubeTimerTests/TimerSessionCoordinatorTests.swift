@@ -72,7 +72,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(restored.isRunning)
         XCTAssertEqual(restored.remaining, 210, accuracy: 0.01)
         XCTAssertEqual(notifications.pending!.seconds, 210, accuracy: 0.01)
-        XCTAssertEqual(saved(in: defaults)?.version, 6)
+        XCTAssertEqual(saved(in: defaults)?.version, 7)
     }
 
     func testDifferentBootUsesWallDeadlineFallback() {
@@ -102,7 +102,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
                                now: source.wallNow, timeSource: source)
         defer { model.reset() }
         XCTAssertEqual(model.remaining, 180, accuracy: 0.01)
-        XCTAssertEqual(saved(in: defaults)?.version, 6)
+        XCTAssertEqual(saved(in: defaults)?.version, 7)
         XCTAssertEqual(saved(in: defaults)?.bootSessionID, source.bootSessionID)
         XCTAssertNotNil(saved(in: defaults)?.continuousDeadline)
     }
@@ -121,7 +121,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(model.pomodoroModeEnabled)
         XCTAssertEqual(model.phase, .breakTime)
         XCTAssertEqual(model.remaining, 123)
-        XCTAssertEqual(saved(in: defaults)?.version, 6)
+        XCTAssertEqual(saved(in: defaults)?.version, 7)
         model.reset()
     }
 
@@ -550,7 +550,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         let notifications = RecordingNotifications()
         let model = TimerSessionCoordinator(defaults: defaults, notificationClient: notifications)
         XCTAssertTrue(model.isPaused)
-        XCTAssertEqual(model.selectedPreset, 4)
+        XCTAssertEqual(model.selectedPreset, 5)
         XCTAssertEqual(model.total, 3_600)
         XCTAssertEqual(model.remaining, 1_234)
         XCTAssertTrue(notifications.scheduled.isEmpty)
@@ -866,7 +866,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(restored.cycleTarget, 4)
         XCTAssertEqual(restored.requestedCycleTarget, 8)
         XCTAssertEqual(restored.focusProgressLabel, "1/4")
-        XCTAssertEqual(saved(in: defaults)?.version, 6)
+        XCTAssertEqual(saved(in: defaults)?.version, 7)
         XCTAssertEqual(saved(in: defaults)?.cycleTarget, 4)
         restored.start()
         for _ in 2...4 {
@@ -1035,7 +1035,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(first.isComplete)
         XCTAssertEqual(first.focusesInCycle, 4)
         XCTAssertEqual(first.completedFocusTotal, 4)
-        XCTAssertEqual(saved(in: defaults)?.version, 6)
+        XCTAssertEqual(saved(in: defaults)?.version, 7)
         let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                   now: source.wallNow, timeSource: source)
         XCTAssertEqual(reopened.completedFocusTotal, 4)
@@ -1217,7 +1217,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(model.isComplete)
         XCTAssertEqual(model.completedFocusTotal, 1)
         XCTAssertEqual(model.focusesInCycle, 1)
-        XCTAssertEqual(saved(in: defaults)?.version, 6)
+        XCTAssertEqual(saved(in: defaults)?.version, 7)
         let reopened = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false, now: now)
         XCTAssertEqual(reopened.completedFocusTotal, 1)
         reopened.reset()
@@ -1437,8 +1437,8 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
                                soundClient: completionSound, presetSoundClient: presetSound)
         model.volume = 0.42
-        // The physical cube has six numbered faces; the 5-minute preset repeats.
-        for (click, preset) in [0, 1, 2, 3, 4, 0].enumerated() {
+        // The six physical cube faces map to six distinct preset slots.
+        for (click, preset) in (0..<6).enumerated() {
             model.selectAndStartCubeFace(preset)
             XCTAssertEqual(model.selectedPreset, preset)
             XCTAssertTrue(model.isRunning)
@@ -1647,16 +1647,16 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         defaults.set(1_575, forKey: "presetSeconds.2")
 
         let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
-        XCTAssertEqual(model.presetSeconds, [300, 600, 1_575, 3_000, 3_600])
-        model.selectAndStartPreset(4)
+        XCTAssertEqual(model.presetSeconds, [300, 600, 1_575, 1_800, 2_700, 3_600])
+        model.selectAndStartPreset(5)
         XCTAssertTrue(model.isRunning)
         XCTAssertEqual(model.total, 3_600)
         XCTAssertEqual(model.remaining, model.total)
 
-        model.setPreset(4, seconds: 3_661)
+        model.setPreset(5, seconds: 3_661)
         let reloaded = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
-        XCTAssertEqual(reloaded.selectedPreset, 4)
-        XCTAssertEqual(reloaded.presetSeconds, [300, 600, 1_575, 3_000, 3_661])
+        XCTAssertEqual(reloaded.selectedPreset, 5)
+        XCTAssertEqual(reloaded.presetSeconds, [300, 600, 1_575, 1_800, 2_700, 3_661])
         model.reset()
     }
 
@@ -1667,7 +1667,8 @@ final class TimerSessionCoordinatorTests: XCTestCase {
 
         let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
         XCTAssertEqual(model.presetNames, TimerSessionCoordinator.defaultPresetNames)
-        XCTAssertEqual(model.presetRoles, [.shortBreak, .general, .focus, .general, .general])
+        XCTAssertEqual(model.presetRoles,
+                       [.shortBreak, .general, .focus, .general, .general, .general])
 
         model.setPresetName(1, name: "Deep Work")
         model.setPresetRole(1, role: .focus)
@@ -1681,21 +1682,127 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(reloaded.presetRoles[2], .general)
     }
 
+    func testFreshInstallSelectsTwentyFiveMinutePresetAndShowsSixDefaultsReady() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.removeObject(forKey: "selectedPreset")
+
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+
+        XCTAssertEqual(model.presetSeconds, [300, 600, 1_500, 1_800, 2_700, 3_600])
+        XCTAssertEqual(model.presetNames, ["5 MIN", "10 MIN", "25 MIN", "30 MIN", "45 MIN", "60 MIN"])
+        XCTAssertEqual(model.presetRoles,
+                       [.shortBreak, .general, .focus, .general, .general, .general])
+        XCTAssertEqual(model.focusPresetIndex, 2)
+        XCTAssertEqual(model.shortBreakPresetIndex, 0)
+        XCTAssertEqual(model.selectedPreset, 2)
+        XCTAssertEqual(model.total, 1_500)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertFalse(model.isPaused)
+        XCTAssertFalse(model.isComplete)
+    }
+
+    func testExistingThirtyMinuteSelectionRemainsSelected() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(2, forKey: "presetSlotSchemaVersion")
+        defaults.set(3, forKey: "selectedPreset")
+
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+
+        XCTAssertEqual(model.selectedPreset, 3)
+        XCTAssertEqual(model.total, 1_800)
+        XCTAssertFalse(model.isRunning)
+    }
+
+    func testLegacyPresetSlotsMigrateAndPausedSessionKeepsItsRemainingTime() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(4, forKey: "selectedPreset")
+        defaults.set(2_400, forKey: "presetSeconds.3")
+        defaults.set("Deep Work", forKey: "presetName.3")
+        defaults.set(PresetRole.general.rawValue, forKey: "presetRole.2")
+        defaults.set(PresetRole.focus.rawValue, forKey: "presetRole.3")
+        defaults.set(5_400, forKey: "presetSeconds.4")
+        defaults.set("Extended", forKey: "presetName.4")
+        defaults.set(PresetRole.general.rawValue, forKey: "presetRole.4")
+        save(SavedTimerSession(version: 6, state: .paused, selectedPreset: 4,
+                               phase: .focus, total: 3_600, deadline: nil,
+                               pausedRemaining: 1_200, cycleTarget: 4,
+                               sessionKind: .presetCountdown), in: defaults)
+
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+
+        XCTAssertEqual(model.presetSeconds, [300, 600, 1_500, 1_800, 2_400, 5_400])
+        XCTAssertEqual(model.presetNames[3], "30 MIN")
+        XCTAssertEqual(model.presetNames[4], "Deep Work")
+        XCTAssertEqual(model.presetNames[5], "Extended")
+        XCTAssertEqual(model.presetRoles[2], .general)
+        XCTAssertEqual(model.presetRoles[4], .focus)
+        XCTAssertEqual(model.selectedPreset, 5)
+        XCTAssertTrue(model.isPaused)
+        XCTAssertEqual(model.total, 3_600)
+        XCTAssertEqual(model.remaining, 1_200)
+        XCTAssertEqual(defaults.integer(forKey: "selectedPreset"), 5)
+        XCTAssertNil(defaults.object(forKey: "presetSeconds.3"))
+        XCTAssertEqual(saved(in: defaults)?.version, 7)
+        XCTAssertEqual(saved(in: defaults)?.selectedPreset, 5)
+    }
+
+    func testLegacyBuiltInFiftyMinuteSlotMovesToFortyFiveMinutes() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(3, forKey: "selectedPreset")
+        defaults.set(3_000, forKey: "presetSeconds.3")
+        defaults.set("50 MIN", forKey: "presetName.3")
+        defaults.set(PresetRole.general.rawValue, forKey: "presetRole.3")
+        defaults.set("60 MIN", forKey: "presetName.4")
+        defaults.set(PresetRole.general.rawValue, forKey: "presetRole.4")
+
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+
+        XCTAssertEqual(model.presetSeconds[4], 2_700)
+        XCTAssertEqual(model.presetNames[4], "45 MIN")
+        XCTAssertEqual(model.presetSeconds[5], 3_600)
+        XCTAssertEqual(model.presetNames[5], "60 MIN")
+        XCTAssertEqual(model.selectedPreset, 4)
+        XCTAssertEqual(model.total, 2_700)
+    }
+
     func testPomodoroUsesConfiguredFocusAndShortBreakRoles() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "flowEnabled")
-        defaults.set(PresetRole.focus.rawValue, forKey: "presetRole.4")
-        defaults.set(PresetRole.general.rawValue, forKey: "presetRole.2")
-
         let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
-        XCTAssertEqual(model.focusPresetIndex, 4)
-        XCTAssertEqual(model.total, TimeInterval(model.presetSeconds[4]))
-        model.setPreset(4, seconds: 1)
+        model.setPresetRole(5, role: .focus)
+        model.selectPreset(5)
+        XCTAssertEqual(model.focusPresetIndex, 5)
+        XCTAssertEqual(model.total, TimeInterval(model.presetSeconds[5]))
+        model.setPreset(5, seconds: 1)
         model.start()
         model.refresh(at: Date().addingTimeInterval(2))
         XCTAssertEqual(model.phase, .breakTime)
         XCTAssertEqual(model.selectedPreset, model.shortBreakPresetIndex)
+    }
+
+    func testThirtyMinutePresetCanBeAssignedAsPomodoroFocus() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "flowEnabled")
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false)
+        defer { model.reset() }
+
+        XCTAssertEqual(model.focusPresetIndex, 2)
+        model.setPresetRole(3, role: .focus)
+        XCTAssertEqual(model.focusPresetIndex, 3)
+        XCTAssertEqual(model.presetRoles[2], .general)
+
+        model.selectPreset(3)
+        model.start()
+        XCTAssertEqual(model.phase, .focus)
+        XCTAssertEqual(model.selectedPreset, 3)
+        XCTAssertEqual(model.total, 1_800)
+        XCTAssertTrue(model.isRunning)
     }
 
     func testSavingOrResettingPresetSettingsDoesNotReplaceActiveOneOffTimer() {
@@ -1719,14 +1826,14 @@ final class TimerSessionCoordinatorTests: XCTestCase {
 
     func testPresetCyclingIncludesSixtyMinutesAndWraps() {
         let model = makeModel()
-        model.selectPreset(3)
+        model.selectPreset(4)
         model.turn(1)
-        XCTAssertEqual(model.selectedPreset, 4)
+        XCTAssertEqual(model.selectedPreset, 5)
         XCTAssertEqual(model.total, 3_600)
         model.turn(1)
         XCTAssertEqual(model.selectedPreset, 0)
         model.turn(-1)
-        XCTAssertEqual(model.selectedPreset, 4)
+        XCTAssertEqual(model.selectedPreset, 5)
     }
 
     func testFaceSelectionStartsEveryPresetFromIdle() {
@@ -2518,6 +2625,7 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         let suite = "CubeTimerSessionCoordinatorTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
+        defaults.set(0, forKey: "selectedPreset")
         return (defaults, suite)
     }
 

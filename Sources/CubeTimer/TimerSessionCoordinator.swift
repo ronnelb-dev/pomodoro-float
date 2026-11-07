@@ -141,8 +141,8 @@ struct TimerSessionUpdate {
 
 @MainActor
 final class TimerSessionCoordinator: ObservableObject {
-    static let defaultPresetNames = ["5 MIN", "10 MIN", "25 MIN", "50 MIN", "60 MIN"]
-    static let defaultDurations = [300, 600, 1500, 3000, 3600]
+    static let defaultPresetNames = ["5 MIN", "10 MIN", "25 MIN", "30 MIN", "45 MIN", "60 MIN"]
+    static let defaultDurations = [300, 600, 1500, 1800, 2700, 3600]
     static func spokenPresetName(_ index: Int) -> String {
         "\(defaultDurations[index] / 60)-minute preset"
     }
@@ -275,6 +275,8 @@ final class TimerSessionCoordinator: ObservableObject {
          accessibilityAnnouncer: TimerAccessibilityAnnouncementClient? = nil) {
         self.defaults = defaults
         sessionPersistence = TimerSessionPersistence(defaults: defaults)
+        let hadExistingPresetData = PresetSlotMigration.hasExistingPresetData(in: defaults)
+        PresetSlotMigration.migratePreferences(in: defaults)
         self.timeSource = timeSource
         testOriginWall = now
         testOriginContinuous = timeSource.continuousNow
@@ -324,8 +326,11 @@ final class TimerSessionCoordinator: ObservableObject {
             defaults.set(loadedRoles[index].rawValue, forKey: "presetRole.\(index)")
         }
         let loadedFlow = defaults.bool(forKey: "flowEnabled")
-        let loadedSelection = loadedFlow ? (loadedRoles.firstIndex(of: .focus) ?? 2) : min(Self.defaultDurations.count - 1,
-                                                   max(0, defaults.integer(forKey: "selectedPreset")))
+        let loadedSelection = loadedFlow ? (loadedRoles.firstIndex(of: .focus) ?? 2) :
+            defaults.object(forKey: "selectedPreset") == nil
+                ? (hadExistingPresetData ? 0 : 2)
+                : min(Self.defaultDurations.count - 1,
+                      max(0, defaults.integer(forKey: "selectedPreset")))
         presetSeconds = loadedPresets
         longBreakSeconds = defaults.object(forKey: "longBreakSeconds") == nil
             ? 900 : TimerEngine.clampedDuration(defaults.integer(forKey: "longBreakSeconds"))
@@ -334,6 +339,7 @@ final class TimerSessionCoordinator: ObservableObject {
         cycleTarget = loadedCycleTarget
         requestedCycleTarget = loadedCycleTarget
         selectedPreset = loadedSelection
+        defaults.set(loadedSelection, forKey: "selectedPreset")
         flowEnabled = loadedFlow
         pomodoroModeEnabled = loadedFlow
         pendingFlowEnabled = nil
@@ -1119,7 +1125,7 @@ final class TimerSessionCoordinator: ObservableObject {
     private func snapshotSession() -> SavedTimerSession {
         let state: SavedTimerSession.State = isRunning ? .running : isPaused ? .paused :
             isComplete ? .completed : .ready
-        return SavedTimerSession(version: 6, state: state,
+        return SavedTimerSession(version: 7, state: state,
                                  selectedPreset: selectedPreset, phase: phase, total: total,
                                  deadline: isRunning ? deadline : nil,
                                  pausedRemaining: isPaused ? remaining : nil,
@@ -1369,6 +1375,7 @@ final class TimerSessionCoordinator: ObservableObject {
             remaining = sessionKind == .stopwatch ? 0 : total
             saveSession()
         }
+        defaults.set(selectedPreset, forKey: "selectedPreset")
     }
 
     private func showAlert(_ text: String) {

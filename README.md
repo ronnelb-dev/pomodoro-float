@@ -19,8 +19,9 @@ Pomodoro Float is a native macOS focus timer with three displays: a rotatable 3D
 - Switch between the full standard window and a compact floating window. Keep the timer visible while working, and resize either window.
 - Optionally show the current timer and quick controls in the menu bar; the menu can pause or resume and start saved presets.
 - Run customizable Pomodoro focus and break cycles, with progress, completion alerts, and session restore.
+- View six distinct presets on the cube; the active face keeps the selected preset duration visible beside the live countdown.
 - Start a one-off countdown from 00:01 to 99:59 without changing saved presets, or use the MM:SS stopwatch.
-- Personalize the five preset slots with names and Focus, Short Break, or General roles; Pomodoro follows the semantic roles rather than fixed positions.
+- Personalize six presets, initially set to 5, 10, 25, 30, 45, and 60 minutes, with names and Focus, Short Break, or General roles; Pomodoro follows the semantic roles rather than fixed positions.
 - Save a one-off Countdown into a chosen preset slot, or restore all preset names, roles, and durations to their defaults without resetting an active timer.
 - Adjust themes, cube appearance, sounds, and timer behavior in the built-in settings.
 
@@ -64,7 +65,7 @@ swift test
 ## Useful controls
 
 - **Start, pause, or resume:** Click the timer or press **Space**. **Command-R** resets it.
-- **Start a preset:** **Command-1** through **Command-5** starts the five preset slots. Their names and durations can be customized in Settings.
+- **Start a preset:** **Command-1** through **Command-6** starts the six preset slots. Their names and durations can be customized in Settings.
 - **Countdown or stopwatch:** Use the mode buttons below the presets in the standard window, the **Timer** menu, or the floating timer's right-click menu.
 - **Desk Clock:** Choose **Clock** in the display picker or floating menu. The time, weekday, and date follow the Mac's locale and 12/24-hour preference. Digital and Clock modes can enter full screen; press **Esc** to return.
 - **Settings:** Press **Command-,** to edit preset names, durations, and Focus/Short Break roles; configure Pomodoro cycles, appearance, sounds, and window behavior. Use **Reset Presets to Defaults** to restore the built-in slots without resetting an active timer.
@@ -72,12 +73,12 @@ swift test
 - **Help:** Choose **Pomodoro Float Help** from the Help menu or the menu bar timer for a reference to gestures, shortcuts, and timer modes.
 - **Floating window:** Press **Command-Shift-B** to toggle it. **Control-drag** the cube to move the floating window; hold **Control** and drag its lower-right grip to resize it. Right-click for timer and window controls.
 
-Pomodoro defaults are 25 minutes of focus, a 5-minute short break, and a 15-minute long break after four focuses. Timer sessions and preferences are saved across launches.
+Pomodoro defaults are 25 minutes of focus, a 5-minute short break, and a 15-minute long break after four focuses. New installs select the 25-minute preset in Ready state. Timer sessions and preferences are saved across launches.
 
 ## Countdown and stopwatch
 
 - **Countdown:** Click **COUNTDOWN** to enter any duration from 00:01 to 99:59, then click **Start**. Opening or dismissing the time-entry popover does not interrupt the current timer, and starting a countdown does not change the saved presets.
-- **Save a Countdown:** In the Countdown popover, choose **Save as Preset**, select one of the five slots, and confirm its name. Saving changes only that slot’s future preset settings; it does not replace the active timer.
+- **Save a Countdown:** In the Countdown popover, choose **Save as Preset**, select one of the six slots, and confirm its name. Saving changes only that slot’s future preset settings; it does not replace the active timer.
 - **Stopwatch:** Click **STOPWATCH** to start counting up immediately. Use the regular timer control or **Space** to pause and resume, and **Command-R** to reset. The stopwatch stops at 99:59 without a completion alert.
 - **During Pomodoro:** Starting either mode suspends the current phase. Use **Resume Pomodoro** to return to it. When a mode replaces an active timer, **Undo** is available for six seconds.
 

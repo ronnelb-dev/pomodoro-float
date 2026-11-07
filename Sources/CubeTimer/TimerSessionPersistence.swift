@@ -19,7 +19,7 @@ struct TimerSessionPersistence {
             clear()
             return nil
         }
-        return saved
+        return Self.migrateToCurrentPresetSlots(saved)
     }
 
     func save(_ session: SavedTimerSession) {
@@ -34,9 +34,10 @@ struct TimerSessionPersistence {
     private static func isValid(_ saved: SavedTimerSession,
                                 defaultFlowEnabled: Bool,
                                 defaultPomodoroModeEnabled: Bool) -> Bool {
-        guard (1...6).contains(saved.version),
+        let validPresetIndices = saved.version >= 7 ? 0..<6 : 0..<5
+        guard (1...7).contains(saved.version),
               (saved.version < 6 || saved.sessionKind != nil),
-              (0..<5).contains(saved.selectedPreset),
+              validPresetIndices.contains(saved.selectedPreset),
               saved.total.isFinite,
               (1...Double(TimerEngine.maximumDuration)).contains(saved.total),
               (saved.sessionKind != .stopwatch || saved.total == Double(TimerEngine.maximumDuration)),
@@ -57,5 +58,27 @@ struct TimerSessionPersistence {
                 (0...suspended.total).contains(suspended.remaining)
         }
         return true
+    }
+
+    private static func migrateToCurrentPresetSlots(_ saved: SavedTimerSession) -> SavedTimerSession {
+        guard saved.version < 7 else { return saved }
+        return SavedTimerSession(
+            version: 7,
+            state: saved.state,
+            selectedPreset: PresetSlotMigration.currentIndex(fromLegacy: saved.selectedPreset),
+            phase: saved.phase,
+            total: saved.total,
+            deadline: saved.deadline,
+            pausedRemaining: saved.pausedRemaining,
+            bootSessionID: saved.bootSessionID,
+            continuousDeadline: saved.continuousDeadline,
+            activeFlowEnabled: saved.activeFlowEnabled,
+            pomodoroModeEnabled: saved.pomodoroModeEnabled,
+            pendingFlowEnabled: saved.pendingFlowEnabled,
+            suspendedPomodoro: saved.suspendedPomodoro,
+            focusesInCycle: saved.focusesInCycle,
+            completedFocusTotal: saved.completedFocusTotal,
+            cycleTarget: saved.cycleTarget,
+            sessionKind: saved.sessionKind)
     }
 }

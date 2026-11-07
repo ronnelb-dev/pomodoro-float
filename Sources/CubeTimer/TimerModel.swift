@@ -140,7 +140,7 @@ enum TimerDisplayStyle: String, CaseIterable, Identifiable {
 @MainActor
 final class TimerModel: ObservableObject {
     static let defaultPresetNames = TimerSessionCoordinator.defaultPresetNames
-    static let defaultDurations = [300, 600, 1500, 3000, 3600]
+    static let defaultDurations = [300, 600, 1500, 1800, 2700, 3600]
     static let displayStyleKey = "timerDisplayStyle"
     static let showMenuBarTimerKey = "showMenuBarTimer"
     static let use24HourTimeKey = "deskClockUse24HourTime"

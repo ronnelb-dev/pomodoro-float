@@ -52,6 +52,22 @@ final class TimerSessionPersistenceTests: XCTestCase {
                                       defaultPomodoroModeEnabled: false))
     }
 
+    func testVersionSevenAcceptsTheSixthPresetSlot() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let persistence = TimerSessionPersistence(defaults: defaults)
+        let session = SavedTimerSession(version: 7, state: .paused,
+                                        selectedPreset: 5, phase: .focus,
+                                        total: 3_600, deadline: nil,
+                                        pausedRemaining: 2_400, cycleTarget: 4,
+                                        sessionKind: .presetCountdown)
+
+        persistence.save(session)
+
+        XCTAssertEqual(persistence.load(defaultFlowEnabled: false,
+                                        defaultPomodoroModeEnabled: false)?.selectedPreset, 5)
+    }
+
     private func isolatedDefaults() -> (UserDefaults, String) {
         let suite = "CubeTimerSessionPersistenceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

@@ -33,6 +33,7 @@ final class TimerModelAdapterTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let model = TimerModel(defaults: defaults, notificationsEnabled: false)
 
+        model.selectPreset(0)
         model.setPreset(0, seconds: 420)
         XCTAssertEqual(model.preferences.presetSeconds[0], 420)
         XCTAssertEqual(model.sessionSnapshot.presetSeconds[0], 420)
