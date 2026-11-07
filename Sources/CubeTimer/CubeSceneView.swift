@@ -8,6 +8,14 @@ struct CubeFocusProgress: Equatable {
     let target: Int
 }
 
+enum CubeFocusMarksPolicy {
+    static func markers(sessionKind: TimerSessionKind, pomodoroModeEnabled: Bool,
+                        completed: Int, target: Int) -> CubeFocusProgress? {
+        guard sessionKind == .presetCountdown, pomodoroModeEnabled else { return nil }
+        return CubeFocusProgress(completed: completed, target: target)
+    }
+}
+
 /// Each physical face maps to one of the six configured preset slots.
 enum CubeFace: Int, CaseIterable {
     case front, right, back, left, top, bottom

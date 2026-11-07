@@ -1794,9 +1794,11 @@ private struct TimerView: View {
                       onToggleAlwaysOnTop: { timer.alwaysOnTop.toggle() },
                       onReset: { timer.reset() },
                       onSelectDisplayStyle: { timer.displayStyle = $0 },
-                      focusMarks: timer.sessionKind != .stopwatch && timer.pomodoroModeEnabled
-                          ? CubeFocusProgress(completed: timer.focusesInCycle,
-                                              target: timer.cycleTarget) : nil,
+                      focusMarks: CubeFocusMarksPolicy.markers(
+                          sessionKind: timer.sessionKind,
+                          pomodoroModeEnabled: timer.pomodoroModeEnabled,
+                          completed: timer.focusesInCycle,
+                          target: timer.cycleTarget),
                       sessionLabel: timer.sessionKind == .stopwatch ? "STOPWATCH" :
                           timer.sessionKind == .customCountdown ? "COUNTDOWN" :
                           timer.flowEnabled ? timer.phase.displayLabel : nil,
