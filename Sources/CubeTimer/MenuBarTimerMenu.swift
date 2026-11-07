@@ -42,6 +42,33 @@ enum MenuBarTimerIndicator {
     }
 }
 
+struct CountdownQuickAccessMenus: View {
+    @ObservedObject var timer: TimerModel
+
+    var body: some View {
+        Group {
+            durationMenu(title: "Recent Countdowns", durations: timer.recentCountdowns,
+                         emptyTitle: "No Recent Countdowns")
+            durationMenu(title: "Favorite Countdowns", durations: timer.favoriteCountdowns,
+                         emptyTitle: "No Favorite Countdowns")
+        }
+    }
+
+    private func durationMenu(title: String, durations: [Int], emptyTitle: String) -> some View {
+        Menu(AppStrings.localized(title)) {
+            if durations.isEmpty {
+                Button(AppStrings.localized(emptyTitle)) {}.disabled(true)
+            } else {
+                ForEach(durations, id: \.self) { seconds in
+                    Button(TimerEngine.display(TimeInterval(seconds))) {
+                        timer.startCustomCountdown(seconds: seconds)
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct MenuBarTimerMenu: View {
     @EnvironmentObject private var timer: TimerModel
     @Environment(\.openWindow) private var openWindow
@@ -98,6 +125,7 @@ struct MenuBarTimerMenu: View {
         Button(AppStrings.localized("Start Stopwatch")) {
             MenuBarQuickAction.stopwatch.perform(using: timer) {}
         }
+        CountdownQuickAccessMenus(timer: timer)
 
         Divider()
         Button(AppStrings.localized("Open Pomodoro Float")) { openTimerWindow() }

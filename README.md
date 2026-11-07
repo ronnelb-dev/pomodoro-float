@@ -67,6 +67,7 @@ swift test
 - **Start, pause, or resume:** Click the timer or press **Space**. **Command-R** resets it.
 - **Start a preset:** **Command-1** through **Command-6** starts the six preset slots. Their names and durations can be customized in Settings.
 - **Countdown or stopwatch:** Use the mode buttons below the presets in the standard window, the **Timer** menu, or the floating timer's right-click menu.
+- **Recent and favorite Countdowns:** Started one-off durations appear in Recent. Pin up to five durations as Favorites in the Countdown popover; choose a saved duration from the popover, Timer menu, or menu-bar menu to start it immediately. Clear Recent without removing Favorites.
 - **Desk Clock:** Choose **Clock** in the display picker or floating menu. The time, weekday, and date follow the Mac's locale and 12/24-hour preference. Cube, Digital, and Clock modes can enter full screen; press **Esc** to return.
 - **Settings:** Press **Command-,** to edit preset names, durations, and Focus/Short Break roles; configure Pomodoro cycles, appearance, sounds, and window behavior. Use **Reset Presets to Defaults** to restore the built-in slots without resetting an active timer.
 - **Menu bar timer:** Enable **Show Timer in Menu Bar** in Settings > Window. Use its menu to pause or resume, start a saved preset, open the main timer, or view Help. Hiding the menu bar item does not stop the timer.

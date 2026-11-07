@@ -92,6 +92,7 @@ struct CubeTimerApp: App {
                 Divider()
                 Button(AppStrings.localized("Countdown…")) { showingCustomCountdown = true }
                 Button(AppStrings.localized("Start Stopwatch")) { timer.startStopwatch() }
+                CountdownQuickAccessMenus(timer: timer)
                 Divider()
                 Button(AppStrings.localized("Settings…")) { showingSettings = true }
                     .keyboardShortcut(",", modifiers: .command)
@@ -875,10 +876,15 @@ private struct TimerView: View {
                 ? timer.presetSeconds[timer.selectedPreset] : Int(timer.total),
                 presetNames: timer.presetNames,
                 initialPresetIndex: timer.selectedPreset,
+                recentCountdowns: timer.recentCountdowns,
+                favoriteCountdowns: timer.favoriteCountdowns,
+                isFavorite: { timer.isFavoriteCountdown($0) },
                 onStart: { seconds in
                     showingCustomCountdown = false
                     timer.startCustomCountdown(seconds: seconds)
                 },
+                onToggleFavorite: { timer.toggleFavoriteCountdown($0) },
+                onClearRecent: { timer.clearRecentCountdowns() },
                 onSavePreset: { index, seconds, name in
                     timer.savePreset(index, seconds: seconds, name: name)
                     showingCustomCountdown = false
@@ -2031,7 +2037,12 @@ private struct CustomCountdownPopover: View {
     let initialSeconds: Int
     let presetNames: [String]
     let initialPresetIndex: Int
+    let recentCountdowns: [Int]
+    let favoriteCountdowns: [Int]
+    let isFavorite: (Int) -> Bool
     let onStart: (Int) -> Void
+    let onToggleFavorite: (Int) -> FavoriteCountdownToggleResult
+    let onClearRecent: () -> Void
     let onSavePreset: (Int, Int, String) -> Void
     let onCancel: () -> Void
     @State private var minutes = ""
@@ -2039,13 +2050,31 @@ private struct CustomCountdownPopover: View {
     @State private var savingPreset = false
     @State private var selectedPresetIndex = 0
     @State private var presetName = ""
+    @State private var favoriteLimitReached = false
 
     private var duration: Int? { CustomCountdownInput.duration(minutes: minutes, seconds: seconds) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(AppStrings.localized("COUNTDOWN"))
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+            HStack {
+                Text(AppStrings.localized("COUNTDOWN"))
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                Spacer()
+                Button {
+                    guard let duration else { return }
+                    toggleFavorite(duration)
+                } label: {
+                    Image(systemName: duration.map(isFavorite) == true ? "star.fill" : "star")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(duration.map(isFavorite) == true ? Color.yellow : Color.secondary)
+                .disabled(duration == nil)
+                .accessibilityLabel(AppStrings.localized(
+                    duration.map(isFavorite) == true ? "Unpin Countdown" : "Pin Countdown"))
+                .help(AppStrings.localized(
+                    duration.map(isFavorite) == true ? "Unpin this duration from Favorites" :
+                        "Pin this duration to Favorites"))
+            }
             HStack(spacing: 10) {
                 TextField(AppStrings.localized("Minutes"), text: $minutes)
                     .accessibilityLabel(AppStrings.localized("Minutes"))
@@ -2058,6 +2087,12 @@ private struct CustomCountdownPopover: View {
             Text(AppStrings.localized("Enter 00:01–99:59. Start without changing presets, or save this duration to a slot."))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+            if favoriteLimitReached {
+                Text(AppStrings.localized("You can pin up to 5 durations. Unpin one first."))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            quickAccessSection
             if savingPreset {
                 Divider()
                 Text(AppStrings.localized("SAVE AS PRESET"))
@@ -2103,6 +2138,64 @@ private struct CustomCountdownPopover: View {
             minutes = String(format: "%02d", initial / 60)
             seconds = String(format: "%02d", initial % 60)
         }
+    }
+
+    @ViewBuilder
+    private var quickAccessSection: some View {
+        if !recentCountdowns.isEmpty || !favoriteCountdowns.isEmpty {
+            Divider()
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 9) {
+                    if !recentCountdowns.isEmpty {
+                        HStack {
+                            Text(AppStrings.localized("RECENT"))
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                            Spacer()
+                            Button(AppStrings.localized("Clear Recent"), action: onClearRecent)
+                                .buttonStyle(.plain)
+                                .font(.system(size: 10))
+                        }
+                        ForEach(recentCountdowns, id: \.self) { seconds in
+                            quickAccessRow(seconds, favorite: isFavorite(seconds))
+                        }
+                    }
+                    if !favoriteCountdowns.isEmpty {
+                        Text(AppStrings.localized("FAVORITES"))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .padding(.top, recentCountdowns.isEmpty ? 0 : 3)
+                        ForEach(favoriteCountdowns, id: \.self) { seconds in
+                            quickAccessRow(seconds, favorite: true)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 155)
+        }
+    }
+
+    private func quickAccessRow(_ seconds: Int, favorite: Bool) -> some View {
+        HStack {
+            Button(TimerEngine.display(TimeInterval(seconds))) { onStart(seconds) }
+                .buttonStyle(.plain)
+                .monospacedDigit()
+            Spacer()
+            Button {
+                toggleFavorite(seconds)
+            } label: {
+                Image(systemName: favorite ? "star.fill" : "star")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(favorite ? Color.yellow : Color.secondary)
+            .accessibilityLabel(AppStrings.localized(
+                favorite ? "Unpin Countdown" : "Pin Countdown"))
+        }
+        .font(.system(size: 12, weight: .medium, design: .rounded))
+        .padding(.vertical, 1)
+    }
+
+    private func toggleFavorite(_ seconds: Int) {
+        favoriteLimitReached = onToggleFavorite(seconds) == .limitReached
     }
 }
 

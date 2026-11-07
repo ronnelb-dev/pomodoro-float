@@ -175,6 +175,8 @@ final class TimerModel: ObservableObject {
     @Published private(set) var preferences: TimerSessionPreferences
     @Published private(set) var presetNames: [String]
     @Published private(set) var presetRoles: [PresetRole]
+    @Published private(set) var recentCountdowns: [Int]
+    @Published private(set) var favoriteCountdowns: [Int]
 
     var presetSeconds: [Int] { preferences.presetSeconds }
     var sessionKind: TimerSessionKind { sessionSnapshot.sessionKind }
@@ -227,6 +229,7 @@ final class TimerModel: ObservableObject {
 
     private let coordinator: TimerSessionCoordinator
     private let defaults: UserDefaults
+    private let countdownQuickAccessStore: CountdownQuickAccessStore
     private let timeSource: TimerTimeSource
     private var observation: AnyCancellable?
     private var temporaryStandardWindowForDisplayFullscreen = false
@@ -242,6 +245,8 @@ final class TimerModel: ObservableObject {
          accessibilityAnnouncer: TimerAccessibilityAnnouncementClient? = nil) {
         self.timeSource = timeSource
         self.defaults = defaults
+        let countdownQuickAccessStore = CountdownQuickAccessStore(defaults: defaults)
+        self.countdownQuickAccessStore = countdownQuickAccessStore
         coordinator = TimerSessionCoordinator(
             defaults: defaults, notificationsEnabled: notificationsEnabled, now: now,
             notificationClient: notificationClient, soundClient: soundClient,
@@ -258,6 +263,8 @@ final class TimerModel: ObservableObject {
         use24HourTime = defaults.bool(forKey: Self.use24HourTimeKey)
         presetNames = coordinator.presetNames
         presetRoles = coordinator.presetRoles
+        recentCountdowns = countdownQuickAccessStore.recentDurations
+        favoriteCountdowns = countdownQuickAccessStore.favoriteDurations
         preferences = TimerSessionPreferences(presetSeconds: coordinator.presetSeconds,
                                               longBreakSeconds: coordinator.longBreakSeconds,
                                               requestedCycleTarget: coordinator.requestedCycleTarget,
@@ -301,7 +308,32 @@ final class TimerModel: ObservableObject {
     }
 
     func selectPreset(_ index: Int) { _ = send(.selectPreset(index)) }
-    func startCustomCountdown(seconds: Int) { _ = send(.startCustomCountdown(seconds)) }
+    @discardableResult
+    func startCustomCountdown(seconds: Int) -> Bool {
+        guard send(.startCustomCountdown(seconds)).accepted else { return false }
+        countdownQuickAccessStore.recordStarted(seconds)
+        recentCountdowns = countdownQuickAccessStore.recentDurations
+        return true
+    }
+
+    @discardableResult
+    func toggleFavoriteCountdown(_ seconds: Int) -> FavoriteCountdownToggleResult {
+        let result = countdownQuickAccessStore.toggleFavorite(seconds)
+        if result == .added || result == .removed {
+            favoriteCountdowns = countdownQuickAccessStore.favoriteDurations
+        }
+        return result
+    }
+
+    func isFavoriteCountdown(_ seconds: Int) -> Bool {
+        favoriteCountdowns.contains(seconds)
+    }
+
+    func clearRecentCountdowns() {
+        countdownQuickAccessStore.clearRecent()
+        recentCountdowns = []
+    }
+
     func startStopwatch() { _ = send(.startStopwatch) }
     func presetBecomesOneOff(_ index: Int) -> Bool {
         coordinator.presetBecomesOneOff(index)
