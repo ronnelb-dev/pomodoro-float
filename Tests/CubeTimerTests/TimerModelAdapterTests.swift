@@ -26,6 +26,57 @@ final class MenuBarTimerIndicatorTests: XCTestCase {
 
 @MainActor
 final class TimerModelAdapterTests: XCTestCase {
+    func testAccessibilityValueFormatterKeepsStopwatchElapsedTimeAndOmitsRemaining() {
+        let snapshot = TimerSessionSnapshot(
+            sessionKind: .stopwatch, selectedPreset: 2, phase: .focus,
+            remaining: 62, total: 5_999, isRunning: true, isPaused: false,
+            isComplete: false, flowEnabled: false, pomodoroModeEnabled: false,
+            pendingFlowEnabled: nil, suspendedPomodoro: nil, presetSeconds: [300, 600, 1500],
+            longBreakSeconds: 900, focusesInCycle: 0, completedFocusTotal: 0,
+            cycleTarget: 4, requestedCycleTarget: 4, alertText: nil, undoPresetLabel: nil)
+
+        XCTAssertEqual(
+            TimerAccessibilityValueFormatter.value(snapshot: snapshot, presetName: "25 MIN"),
+            "Stopwatch, 1 minute and 2 seconds elapsed, Running")
+    }
+
+    func testAccessibilityValueFormatterCoversCountdownStatesAndPomodoroCycle() {
+        let ready = accessibilitySnapshot(kind: .customCountdown)
+        XCTAssertEqual(TimerAccessibilityValueFormatter.value(snapshot: ready, presetName: "25 MIN"),
+                       "Countdown, Ready, 25 minutes remaining")
+
+        let paused = accessibilitySnapshot(kind: .presetCountdown, paused: true)
+        XCTAssertEqual(TimerAccessibilityValueFormatter.value(snapshot: paused, presetName: "Reading"),
+                       "Reading, Paused, 25 minutes remaining")
+
+        let completed = accessibilitySnapshot(kind: .presetCountdown, completed: true)
+        XCTAssertEqual(TimerAccessibilityValueFormatter.value(snapshot: completed, presetName: "25 MIN"),
+                       "25 MIN, Complete, 25 minutes remaining")
+
+        let pomodoro = accessibilitySnapshot(kind: .presetCountdown, running: true,
+                                              flowEnabled: true, pomodoroEnabled: true)
+        XCTAssertEqual(TimerAccessibilityValueFormatter.value(snapshot: pomodoro, presetName: "Focus"),
+                       "Focus session, Focus, Running, 25 minutes remaining, 0 of 4 focuses toward long break, 0 completed focuses total")
+    }
+
+    private func accessibilitySnapshot(
+        kind: TimerSessionKind,
+        paused: Bool = false,
+        running: Bool = false,
+        completed: Bool = false,
+        flowEnabled: Bool = false,
+        pomodoroEnabled: Bool = false
+    ) -> TimerSessionSnapshot {
+        TimerSessionSnapshot(
+            sessionKind: kind, selectedPreset: 2, phase: .focus,
+            remaining: 1_500, total: 1_500, isRunning: running, isPaused: paused,
+            isComplete: completed, flowEnabled: flowEnabled, pomodoroModeEnabled: pomodoroEnabled,
+            pendingFlowEnabled: nil, suspendedPomodoro: nil,
+            presetSeconds: [300, 600, 1_500, 1_800, 2_700, 3_600],
+            longBreakSeconds: 900, focusesInCycle: 0, completedFocusTotal: 0,
+            cycleTarget: 4, requestedCycleTarget: 4, alertText: nil, undoPresetLabel: nil)
+    }
+
     func testCommandsUpdatePublishedSnapshotAndPreferences() {
         let suite = "CubeTimerModelAdapterTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

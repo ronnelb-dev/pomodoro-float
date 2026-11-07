@@ -171,7 +171,7 @@ struct DigitalTimerPanel: View {
                     }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Digital timer")
+            .accessibilityLabel(AppStrings.localized("Digital timer"))
             .accessibilityValue(DigitalTimerAccessibility.value(
                 timeLabel: timeLabel, phaseLabel: phaseLabel,
                 statusLabel: statusLabel, focusProgress: focusProgress,

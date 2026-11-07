@@ -17,6 +17,12 @@ if [[ ! -f "$icon_file" ]]; then
     exit 1
 fi
 cp "$icon_file" "$contents_dir/Resources/PomodoroFloat.icns"
+resource_bundle=".build/release/CubeTimer_CubeTimer.bundle"
+if [[ ! -d "$resource_bundle" ]]; then
+    print -u2 "Missing Swift package resources: $resource_bundle"
+    exit 1
+fi
+ditto "$resource_bundle" "$contents_dir/Resources/CubeTimer_CubeTimer.bundle"
 for sound_file in alarm-titititi.mp3 alarm-titititi.caf human-thud.mp3; do
     source_file="$project_dir/Sources/CubeTimer/Resources/$sound_file"
     if [[ ! -f "$source_file" ]]; then

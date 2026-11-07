@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct TimerHelpView: View {
+    @EnvironmentObject private var appearance: AppearanceModel
+    @State private var showingWelcomeGuide = false
     private let topics: [(title: String, details: String)] = [
         ("Start and control a timer",
          "Click the timer to start, pause, or resume. Press Space for the same action and Command-R to reset. Choose a preset and press Start; Command-1 through Command-6 start saved presets immediately."),
@@ -20,18 +22,20 @@ struct TimerHelpView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Pomodoro Float Help")
+                        Text(AppStrings.localized("help.title"))
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text("A quick reference for timer controls and shortcuts.")
+                    Text(AppStrings.localized("help.subtitle"))
                         .foregroundStyle(.secondary)
                 }
 
+                Button(AppStrings.localized("settings.openWelcomeGuide")) { showingWelcomeGuide = true }
+
                 ForEach(topics, id: \.title) { topic in
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(topic.title)
+                        Text(AppStrings.localized("help.topic.\(topic.title)"))
                             .font(.headline)
                             .accessibilityAddTraits(.isHeader)
-                        Text(topic.details)
+                        Text(AppStrings.localized("help.detail.\(topic.title)"))
                             .fixedSize(horizontal: false, vertical: true)
                             .foregroundStyle(.secondary)
                     }
@@ -41,5 +45,8 @@ struct TimerHelpView: View {
             .padding(24)
         }
         .frame(minWidth: 440, minHeight: 500)
+        .sheet(isPresented: $showingWelcomeGuide) {
+            WelcomeGuideView().environmentObject(appearance)
+        }
     }
 }

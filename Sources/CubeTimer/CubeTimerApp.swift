@@ -8,6 +8,7 @@ struct CubeTimerApp: App {
     @StateObject private var appearance = AppearanceModel()
     @State private var showingSettings = false
     @State private var showingCustomCountdown = false
+    @State private var showingWelcomeGuide = false
 
     var body: some Scene {
         WindowGroup("Pomodoro Float", id: TimerApplicationDelegate.timerWindowSceneID) {
@@ -20,16 +21,24 @@ struct CubeTimerApp: App {
                                                fullscreenTransitionActive:
                                                    timer.isPreparingDisplayFullscreen ||
                                                    timer.isDisplayFullscreen))
+                .onAppear {
+                    if OnboardingPreference.shouldShowAutomatically(in: .standard) {
+                        showingWelcomeGuide = true
+                    }
+                }
+                .sheet(isPresented: $showingWelcomeGuide) {
+                    WelcomeGuideView().environmentObject(appearance)
+                }
         }
         .defaultSize(width: 420, height: 560)
         .commands {
             CommandGroup(before: .undoRedo) {
                 if timer.undoPresetLabel != nil {
-                    Button("Undo Timer Change") { timer.undoPresetChange() }
+                    Button(AppStrings.localized("Undo Timer Change")) { timer.undoPresetChange() }
                         .keyboardShortcut("z", modifiers: .command)
                 }
             }
-            CommandMenu("Timer") {
+            CommandMenu(AppStrings.localized("Timer")) {
                 if timer.isDisplayFullscreen {
                     Button("Exit \(timer.displayStyle.fullscreenTitle)") {
                         NotificationCenter.default.post(
@@ -37,7 +46,7 @@ struct CubeTimerApp: App {
                     }
                     .keyboardShortcut(.cancelAction)
                 } else if timer.isPreparingDisplayFullscreen {
-                    Button("Entering Full Screen…") {}
+                    Button(AppStrings.localized("Entering Full Screen…")) {}
                         .disabled(true)
                 } else if timer.displayStyle.supportsFullscreen {
                     Button(timer.displayStyle.fullscreenTitle) {
@@ -50,10 +59,10 @@ struct CubeTimerApp: App {
                     timer.startOrPause()
                 }
                 .keyboardShortcut(.space, modifiers: [])
-                Button("Reset") { timer.reset() }
+                Button(AppStrings.localized("Reset")) { timer.reset() }
                     .keyboardShortcut("r", modifiers: .command)
                 if timer.hasSuspendedPomodoro {
-                    Button("Resume Pomodoro") { timer.resumePomodoro() }
+                    Button(AppStrings.localized("Resume Pomodoro")) { timer.resumePomodoro() }
                         .keyboardShortcut("p", modifiers: [.command, .shift])
                 }
                 if timer.canSkipBreak {
@@ -61,36 +70,44 @@ struct CubeTimerApp: App {
                         .keyboardShortcut("k", modifiers: [.command, .shift])
                 }
                 Divider()
-                Button("Previous Face") { timer.turn(-1) }
+                Button(AppStrings.localized("Previous Face")) { timer.turn(-1) }
                     .keyboardShortcut(.leftArrow, modifiers: .command)
-                Button("Next Face") { timer.turn(1) }
+                Button(AppStrings.localized("Next Face")) { timer.turn(1) }
                     .keyboardShortcut(.rightArrow, modifiers: .command)
+                Divider()
+                ForEach(DisplayStyleShortcutPolicy.entries, id: \.number) { entry in
+                    Button("\(entry.style.title) Display") { timer.displayStyle = entry.style }
+                        .keyboardShortcut(KeyEquivalent(entry.number),
+                                          modifiers: [.command, .shift])
+                }
                 Divider()
                 ForEach(timer.presetNames.indices, id: \.self) { index in
                     Button("Start \(timer.presetNames[index]) Preset") {
                         timer.selectAndStartPreset(index)
                     }
-                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")),
-                                      modifiers: .command)
+                    .keyboardShortcut(KeyEquivalent(
+                        PresetShortcutPolicy.commandNumber(forPresetIndex: index) ?? "1"),
+                        modifiers: .command)
                 }
                 Divider()
-                Button("Countdown…") { showingCustomCountdown = true }
-                Button("Start Stopwatch") { timer.startStopwatch() }
+                Button(AppStrings.localized("Countdown…")) { showingCustomCountdown = true }
+                Button(AppStrings.localized("Start Stopwatch")) { timer.startStopwatch() }
                 Divider()
-                Button("Settings…") { showingSettings = true }
+                Button(AppStrings.localized("Settings…")) { showingSettings = true }
                     .keyboardShortcut(",", modifiers: .command)
-                Button("Borderless Window") {
+                Button(AppStrings.localized("Borderless Window")) {
                     timer.setBorderlessWindow(!timer.borderlessWindow)
                 }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
                     .disabled(timer.isDisplayFullscreen || timer.isPreparingDisplayFullscreen)
-                Button("Always on Top") { timer.alwaysOnTop.toggle() }
+                Button(AppStrings.localized("Always on Top")) { timer.alwaysOnTop.toggle() }
             }
-            TimerHelpCommands()
+            TimerHelpCommands(showingWelcomeGuide: $showingWelcomeGuide)
         }
 
-        Window("Pomodoro Float Help", id: TimerApplicationDelegate.helpWindowSceneID) {
+        Window(AppStrings.localized("Pomodoro Float Help"), id: TimerApplicationDelegate.helpWindowSceneID) {
             TimerHelpView()
+                .environmentObject(appearance)
         }
         .defaultSize(width: 540, height: 620)
 
@@ -98,7 +115,7 @@ struct CubeTimerApp: App {
             get: { timer.showMenuBarTimer },
             set: { timer.setShowMenuBarTimer($0) }
         )) {
-            MenuBarTimerMenu()
+            MenuBarTimerMenu(showingCustomCountdown: $showingCustomCountdown)
                 .environmentObject(timer)
         } label: {
             HStack(spacing: 4) {
@@ -967,6 +984,7 @@ private struct TimerView: View {
                         header(narrow: geometry.size.width < 390,
                                availableWidth: availablePanelWidth)
                             .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                            .accessibilitySortPriority(10)
                         if timer.displayStyle == .clock {
                             Spacer(minLength: 0)
                             deskClockPanel(compact: metrics.compact)
@@ -981,6 +999,7 @@ private struct TimerView: View {
                             Spacer(minLength: 0)
                             status
                                 .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                                .accessibilitySortPriority(8)
                             if timer.displayStyle == .cube {
                                 cube(height: metrics.displayHeight)
                             } else {
@@ -995,12 +1014,16 @@ private struct TimerView: View {
                             Spacer(minLength: 0)
                             presetPicker(compact: metrics.compact)
                                 .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                                .accessibilitySortPriority(6)
                             timingModeButtons(compact: metrics.compact)
                                 .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                                .accessibilitySortPriority(5)
                             controls(compact: metrics.compact)
                                 .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                                .accessibilitySortPriority(4)
                             footer
                                 .frame(maxWidth: TimerWindowLayout.standardContentWidth)
+                                .accessibilitySortPriority(1)
                         }
                     }
                     .frame(maxWidth: contentMaxWidth)
@@ -1219,7 +1242,7 @@ private struct TimerView: View {
     }
 
     private var fullscreenExitHint: some View {
-        Text("Press Esc to exit full screen")
+        Text(AppStrings.localized("Press Esc to exit full screen"))
             .font(.system(size: 13, weight: .semibold, design: .rounded))
             .foregroundStyle(colors.text)
             .padding(.horizontal, 18)
@@ -1355,9 +1378,9 @@ private struct TimerView: View {
 
     @ViewBuilder
     private var floatingContextMenu: some View {
-        Button("Cube Timer") { timer.displayStyle = .cube }
-        Button("Digital Timer") { timer.displayStyle = .digital }
-        Button("Desk Clock") { timer.displayStyle = .clock }
+        Button(AppStrings.localized("Cube Timer")) { timer.displayStyle = .cube }
+        Button(AppStrings.localized("Digital Timer")) { timer.displayStyle = .digital }
+        Button(AppStrings.localized("Desk Clock")) { timer.displayStyle = .clock }
         Divider()
         if timer.displayStyle.supportsFullscreen {
             Button(timer.isPreparingDisplayFullscreen ? "Entering Full Screen…" :
@@ -1365,34 +1388,34 @@ private struct TimerView: View {
                     timer.displayStyle.fullscreenTitle)) { toggleDisplayFullscreen() }
                 .disabled(timer.isPreparingDisplayFullscreen)
         }
-        Menu("Start Preset") {
+        Menu(AppStrings.localized("Start Preset")) {
             ForEach(timer.presetNames.indices, id: \.self) { index in
                 Button("Start \(timer.presetNames[index])") {
                     timer.selectAndStartPreset(index)
                 }
             }
         }
-        Button("Countdown…") { showingCustomCountdown = true }
-        Button("Start Stopwatch") { timer.startStopwatch() }
+        Button(AppStrings.localized("Countdown…")) { showingCustomCountdown = true }
+        Button(AppStrings.localized("Start Stopwatch")) { timer.startStopwatch() }
         if let next = timer.nextPhaseName {
             Button("Start \(next)") { timer.startNextPhase() }
         } else {
             Button(countdownActionName) { timer.startOrPause() }
         }
-        Button("Reset Timer") { timer.reset() }
+        Button(AppStrings.localized("Reset Timer")) { timer.reset() }
         if timer.hasSuspendedPomodoro {
-            Button("Resume Pomodoro") { timer.resumePomodoro() }
+            Button(AppStrings.localized("Resume Pomodoro")) { timer.resumePomodoro() }
         }
         if timer.canSkipBreak {
             Button(timer.skipBreakName) { timer.skipBreak() }
         }
         Divider()
-        Button("Settings…") { showingSettings = true }
+        Button(AppStrings.localized("Settings…")) { showingSettings = true }
         Button(timer.alwaysOnTop ? "Turn Off Always on Top" : "Always on Top") {
             timer.alwaysOnTop.toggle()
         }
-        Button("Standard Window") { timer.setBorderlessWindow(false) }
-        Button("Floating Digital Timer Help") { showFloatingHelp() }
+        Button(AppStrings.localized("Standard Window")) { timer.setBorderlessWindow(false) }
+        Button(AppStrings.localized("Floating Digital Timer Help")) { showFloatingHelp() }
     }
 
     private func showFloatingHelp() {
@@ -1482,9 +1505,9 @@ private struct TimerView: View {
                             in: RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
-        .help("Return to Timer Face · keeps current session")
-        .accessibilityLabel("Return to Timer Face")
-        .accessibilityHint("Rotates the cube back without changing the current session")
+        .help(AppStrings.localized("Return to Timer Face · keeps current session"))
+        .accessibilityLabel(AppStrings.localized("Return to Timer Face"))
+        .accessibilityHint(AppStrings.localized("Rotates the cube back without changing the current session"))
     }
 
     private func undoToast(label: String, borderless: Bool) -> some View {
@@ -1492,12 +1515,12 @@ private struct TimerView: View {
             Text("Replaced \(label)")
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            Button("Undo") { timer.undoPresetChange() }
+            Button(AppStrings.localized("Undo")) { timer.undoPresetChange() }
                 .fontWeight(.bold)
                 .foregroundStyle(accent)
                 .buttonStyle(.plain)
-                .accessibilityLabel("Undo timer change")
-                .accessibilityHint("Restores the previous timer and Pomodoro state")
+                .accessibilityLabel(AppStrings.localized("Undo timer change"))
+                .accessibilityHint(AppStrings.localized("Restores the previous timer and Pomodoro state"))
         }
         .font(.system(size: borderless ? 10 : 12, weight: .medium, design: .rounded))
         .foregroundStyle(colors.text)
@@ -1517,7 +1540,7 @@ private struct TimerView: View {
                 Text("\(countdownActionName) \(timer.sessionKind == .stopwatch ? "stopwatch" : "countdown")")
             }
             .accessibilityValue(timer.accessibilityValue)
-            .accessibilityHint("Starts, pauses, or resumes without resetting paused time")
+            .accessibilityHint(AppStrings.localized("Starts, pauses, or resumes without resetting paused time"))
 
             ForEach(timer.presetNames.indices, id: \.self) { index in
                 Button("Start \(timer.presetNames[index])") {
@@ -1538,38 +1561,38 @@ private struct TimerView: View {
             }
 
             if timer.borderlessWindow && timer.undoPresetLabel != nil {
-                Button("Undo timer change") { timer.undoPresetChange() }
-                    .accessibilityHint("Restores the previous timer and Pomodoro state")
+                Button(AppStrings.localized("Undo timer change")) { timer.undoPresetChange() }
+                    .accessibilityHint(AppStrings.localized("Restores the previous timer and Pomodoro state"))
             }
 
             if (timer.borderlessWindow || isInNativeFullscreen) && !displayFaceReadable {
-                Button("Return to Timer Face") { returnToTimerFace() }
-                    .accessibilityHint("Rotates the cube back without changing the current session")
+                Button(AppStrings.localized("Return to Timer Face")) { returnToTimerFace() }
+                    .accessibilityHint(AppStrings.localized("Rotates the cube back without changing the current session"))
             }
 
             if timer.borderlessWindow && timer.hasSuspendedPomodoro {
-                Button("Resume Pomodoro") { timer.resumePomodoro() }
-                    .accessibilityHint("Replaces the one-off timer and restores the paused Pomodoro phase")
+                Button(AppStrings.localized("Resume Pomodoro")) { timer.resumePomodoro() }
+                    .accessibilityHint(AppStrings.localized("Replaces the one-off timer and restores the paused Pomodoro phase"))
             }
 
             if timer.borderlessWindow, let next = timer.nextPhaseName {
                 Button("Start \(next)") { timer.startNextPhase() }
-                    .accessibilityHint("Starts the next Pomodoro phase when you are ready")
+                    .accessibilityHint(AppStrings.localized("Starts the next Pomodoro phase when you are ready"))
             }
 
             if timer.borderlessWindow && timer.canSkipBreak {
                 Button(timer.skipBreakName) { timer.skipBreak() }
-                    .accessibilityHint("Ends this break and leaves Focus ready to start")
+                    .accessibilityHint(AppStrings.localized("Ends this break and leaves Focus ready to start"))
             }
 
             if timer.borderlessWindow {
-                Button("Reset timer") { timer.reset() }
-                Button("Settings") { showingSettings = true }
-                Button("Borderless Window") {
+                Button(AppStrings.localized("Reset timer")) { timer.reset() }
+                Button(AppStrings.localized("Settings")) { showingSettings = true }
+                Button(AppStrings.localized("Borderless Window")) {
                     timer.setBorderlessWindow(false)
                 }
-                .accessibilityValue("On")
-                Button("Always on Top") { timer.alwaysOnTop.toggle() }
+                .accessibilityValue(AppStrings.localized("On"))
+                Button(AppStrings.localized("Always on Top")) { timer.alwaysOnTop.toggle() }
                     .accessibilityValue(timer.alwaysOnTop ? "On" : "Off")
             }
         }
@@ -1617,14 +1640,14 @@ private struct TimerView: View {
                         .frame(width: 31, height: 30)
                 }
                 .help(timer.alwaysOnTop ? "Turn off Always on Top" : "Turn on Always on Top")
-                .accessibilityLabel("Always on Top")
+                .accessibilityLabel(AppStrings.localized("Always on Top"))
                 .accessibilityValue(timer.alwaysOnTop ? "On" : "Off")
                 Button { showingSettings = true } label: {
                     Image(systemName: "slider.horizontal.3")
                         .frame(width: 31, height: 30)
                 }
-                .help("Timer, appearance, window, and sound settings")
-                .accessibilityLabel("Settings")
+                .help(AppStrings.localized("Timer, appearance, window, and sound settings"))
+                .accessibilityLabel(AppStrings.localized("Settings"))
             }
             if DisplayFullscreenTransition.shouldShowDisplayPicker(phase: fullscreenPhase) {
                 HStack(spacing: 2) {
@@ -1640,10 +1663,14 @@ private struct TimerView: View {
                                             in: RoundedRectangle(cornerRadius: 6))
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled(false)
                         .accessibilityLabel(style.title)
+                        .accessibilityHint("Switches the main display to \(style.title).")
+                        .accessibilitySortPriority(9)
                         .accessibilityAddTraits(selected ? .isSelected : [])
                     }
                 }
+                .accessibilitySortPriority(9)
                 .padding(3)
                 .background(colors.panel, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
@@ -1653,7 +1680,7 @@ private struct TimerView: View {
                 .frame(width: TimerWindowLayout.headerPickerWidth(
                     availableWidth: availableWidth, compact: narrow))
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel("Timer design")
+                .accessibilityLabel(AppStrings.localized("Timer design"))
             }
         }
         .buttonStyle(IconButtonStyle(colors: colors, accent: accent))
@@ -1691,11 +1718,11 @@ private struct TimerView: View {
                     .minimumScaleFactor(0.8)
             }
             if timer.hasSuspendedPomodoro {
-                Button("RESUME POMODORO") { timer.resumePomodoro() }
+                Button(AppStrings.localized("RESUME POMODORO")) { timer.resumePomodoro() }
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundStyle(accent)
                     .buttonStyle(.plain)
-                    .help("Restore the paused Pomodoro phase (Command-Shift-P)")
+                    .help(AppStrings.localized("Restore the paused Pomodoro phase (Command-Shift-P)"))
             }
         }
         if timer.canSkipBreak {
@@ -1703,7 +1730,7 @@ private struct TimerView: View {
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .foregroundStyle(accent)
                 .buttonStyle(.plain)
-                .help("End the break and prepare Focus (Command-Shift-K)")
+                .help(AppStrings.localized("End the break and prepare Focus (Command-Shift-K)"))
         }
         }
         .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -1850,7 +1877,9 @@ private struct TimerView: View {
                         ? "Select without starting. Replaces the current session; Undo is available for six seconds."
                         : "Select without starting. Press Start when ready.")
                 .accessibilityLabel("\(timer.presetNames[index]) preset, \(TimerEngine.display(TimeInterval(timer.presetSeconds[index])))")
-                .accessibilityHint(selected
+                .accessibilityHint(timer.displayStyle == .cube
+                    ? PresetTileAccessibilityPolicy.hint(displayStyle: .cube)
+                    : selected
                     ? "Current preset. Clicking this button does not restart it."
                     : timer.flowEnabled && timer.longBreakDue
                         ? "Selects a one-off timer without starting. Your long break stays due until resumed or skipped."
@@ -1859,6 +1888,8 @@ private struct TimerView: View {
                     : timer.isRunning || timer.isPaused
                         ? "Selects without starting and replaces the current session. Undo is available for six seconds."
                         : "Selects this preset without starting its countdown. Press Start when ready.")
+                .focusEffectDisabled(false)
+                .accessibilitySortPriority(5)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
@@ -1900,6 +1931,7 @@ private struct TimerView: View {
                 }
         }
         .buttonStyle(.plain)
+        .focusEffectDisabled(false)
         .help(hint)
         .accessibilityLabel(title)
         .accessibilityHint(hint)
@@ -1917,13 +1949,15 @@ private struct TimerView: View {
                     .frame(height: compact ? 47 : 52)
             }
             .buttonStyle(PrimaryButtonStyle(accent: accent, foreground: accentInk))
+            .focusEffectDisabled(false)
             Button { timer.reset() } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .frame(width: 53, height: compact ? 47 : 52)
             }
             .buttonStyle(SecondaryButtonStyle(colors: colors))
-            .help("Reset")
-            .accessibilityLabel("Reset timer")
+            .focusEffectDisabled(false)
+            .help(AppStrings.localized("Reset"))
+            .accessibilityLabel(AppStrings.localized("Reset timer"))
         }
     }
 
@@ -2010,32 +2044,32 @@ private struct CustomCountdownPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("COUNTDOWN")
+            Text(AppStrings.localized("COUNTDOWN"))
                 .font(.system(size: 14, weight: .bold, design: .rounded))
             HStack(spacing: 10) {
-                TextField("Minutes", text: $minutes)
-                    .accessibilityLabel("Minutes")
-                Text(":")
-                TextField("Seconds", text: $seconds)
-                    .accessibilityLabel("Seconds")
+                TextField(AppStrings.localized("Minutes"), text: $minutes)
+                    .accessibilityLabel(AppStrings.localized("Minutes"))
+                Text(AppStrings.localized(":"))
+                TextField(AppStrings.localized("Seconds"), text: $seconds)
+                    .accessibilityLabel(AppStrings.localized("Seconds"))
             }
             .font(.system(size: 22, weight: .semibold, design: .monospaced))
             .textFieldStyle(.roundedBorder)
-            Text("Enter 00:01–99:59. Start without changing presets, or save this duration to a slot.")
+            Text(AppStrings.localized("Enter 00:01–99:59. Start without changing presets, or save this duration to a slot."))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             if savingPreset {
                 Divider()
-                Text("SAVE AS PRESET")
+                Text(AppStrings.localized("SAVE AS PRESET"))
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                 Picker("Preset slot", selection: $selectedPresetIndex) {
                     ForEach(presetNames.indices, id: \.self) { index in
                         Text(presetNames[index]).tag(index)
                     }
                 }
-                TextField("Preset name", text: $presetName)
-                    .accessibilityLabel("Preset name")
-                Button("Save Preset") {
+                TextField(AppStrings.localized("Preset name"), text: $presetName)
+                    .accessibilityLabel(AppStrings.localized("Preset name"))
+                Button(AppStrings.localized("Save Preset")) {
                     guard let duration,
                           !presetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                     onSavePreset(selectedPresetIndex, duration,
@@ -2044,17 +2078,17 @@ private struct CustomCountdownPopover: View {
                 .disabled(duration == nil || presetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             HStack {
-                Button("Cancel", action: onCancel)
+                Button(AppStrings.localized("Cancel"), action: onCancel)
                 Spacer()
                 if !savingPreset {
-                    Button("Save as Preset") {
+                    Button(AppStrings.localized("Save as Preset")) {
                         savingPreset = true
                         selectedPresetIndex = min(initialPresetIndex, max(0, presetNames.count - 1))
                         presetName = presetNames.indices.contains(selectedPresetIndex)
                             ? presetNames[selectedPresetIndex] : "Preset"
                     }
                 }
-                Button("Start") {
+                Button(AppStrings.localized("Start")) {
                     if let duration { onStart(duration) }
                 }
                     .keyboardShortcut(.defaultAction)
@@ -2079,6 +2113,7 @@ private struct SettingsView: View {
     @EnvironmentObject private var timer: TimerModel
     @EnvironmentObject private var appearance: AppearanceModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showingWelcomeGuide = false
     @State private var tab: Tab = .timer
     @State private var minutes = TimerModel.defaultDurations.map { $0 / 60 }
     @State private var seconds = TimerModel.defaultDurations.map { $0 % 60 }
@@ -2098,22 +2133,22 @@ private struct SettingsView: View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("SETTINGS")
+                    Text(AppStrings.localized("SETTINGS"))
                         .font(.system(size: 19, weight: .heavy, design: .rounded))
                         .tracking(1.5)
-                    Text("Shape your time and your cube.")
+                    Text(AppStrings.localized("Shape your time and your cube."))
                         .font(.system(size: 11))
                         .foregroundStyle(colors.secondary)
                 }
                 Spacer()
-                Button("Done") { timer.setCycleTarget(cycleTargetSelection); dismiss() }
+                Button(AppStrings.localized("Done")) { timer.setCycleTarget(cycleTargetSelection); dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
             HStack(spacing: 3) {
                 ForEach(Tab.allCases, id: \.self) { section in
                     let selected = tab == section
                     Button { tab = section } label: {
-                        Text(section.rawValue)
+                        Text(AppStrings.localized(section.rawValue))
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .frame(maxWidth: .infinity)
                             .frame(height: 30)
@@ -2122,7 +2157,7 @@ private struct SettingsView: View {
                                         in: RoundedRectangle(cornerRadius: 7))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(section.rawValue)
+                    .accessibilityLabel(AppStrings.localized(section.rawValue))
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
@@ -2133,7 +2168,7 @@ private struct SettingsView: View {
                     .strokeBorder(colors.edge, lineWidth: 1)
             }
             .accessibilityElement(children: .contain)
-            .accessibilityLabel("Settings section")
+            .accessibilityLabel(AppStrings.localized("Settings section"))
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -2154,6 +2189,9 @@ private struct SettingsView: View {
         .background(colors.background)
         .foregroundStyle(colors.text)
         .preferredColorScheme(appearance.value.body.luminance > 0.58 ? .light : .dark)
+        .sheet(isPresented: $showingWelcomeGuide) {
+            WelcomeGuideView().environmentObject(appearance)
+        }
         .onAppear {
             minutes = timer.presetSeconds.map { $0 / 60 }
             seconds = timer.presetSeconds.map { $0 % 60 }
@@ -2168,13 +2206,13 @@ private struct SettingsView: View {
     private var timerSettings: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("TIMER & POMODORO")
-            Toggle("Auto-cycle focus and break", isOn: Binding(
+            Toggle(AppStrings.localized("Auto-cycle focus and break"), isOn: Binding(
                 get: { timer.requestedFlowEnabled }, set: { timer.setFlowEnabled($0) }
             ))
             .toggleStyle(.switch)
             helper(timer.pendingModeDescription ??
                    "Uses the focus and short-break presets. Mode changes wait for the current timer to finish.")
-            Toggle("Automatically start next phase", isOn: $timer.autoStartNextPhase)
+            Toggle(AppStrings.localized("Automatically start next phase"), isOn: $timer.autoStartNextPhase)
                 .toggleStyle(.switch)
             helper("Starts the next phase on time; after a missed boundary, press Start. Skipping a break prepares Focus.")
             Stepper(value: $cycleTargetSelection, in: 2...8) {
@@ -2197,13 +2235,13 @@ private struct SettingsView: View {
                         minutes: $longBreakMinutes, seconds: $longBreakSeconds,
                         savedSeconds: timer.longBreakSeconds)
             helper("Durations: 00:01–99:59. Edit each name and role, then save the row. Focus and Short Break roles drive Pomodoro; only one slot can have each role.")
-            Button("Reset Preset Settings to Defaults") {
+            Button(AppStrings.localized("Reset Preset Settings to Defaults")) {
                 showingPresetResetConfirmation = true
             }
             .confirmationDialog("Reset preset settings and focus-cycle target to defaults?",
                                 isPresented: $showingPresetResetConfirmation,
                                 titleVisibility: .visible) {
-                Button("Reset Preset Settings", role: .destructive) {
+                Button(AppStrings.localized("Reset Preset Settings"), role: .destructive) {
                     timer.resetPresetSettings()
                     minutes = timer.presetSeconds.map { $0 / 60 }
                     seconds = timer.presetSeconds.map { $0 % 60 }
@@ -2213,9 +2251,9 @@ private struct SettingsView: View {
                     longBreakSeconds = timer.longBreakSeconds % 60
                     cycleTargetSelection = 4
                 }
-                Button("Cancel", role: .cancel) {}
+                Button(AppStrings.localized("Cancel"), role: .cancel) {}
             } message: {
-                Text("Preset settings and the focus-cycle target will be restored. The active timer will not be reset.")
+                Text(AppStrings.localized("Preset settings and the focus-cycle target will be restored. The active timer will not be reset."))
             }
         }
     }
@@ -2243,7 +2281,7 @@ private struct SettingsView: View {
             presetNames: presetNamesDraft)
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
-                TextField("Preset name", text: $presetNamesDraft[index])
+                TextField(AppStrings.localized("Preset name"), text: $presetNamesDraft[index])
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 155)
                     .accessibilityLabel("Preset \(index + 1) name")
@@ -2254,16 +2292,16 @@ private struct SettingsView: View {
                 }
                 .labelsHidden()
                 Spacer(minLength: 4)
-                TextField("min", value: $minutes[index], format: .number)
+                TextField(AppStrings.localized("min"), value: $minutes[index], format: .number)
                     .frame(width: 43)
                     .multilineTextAlignment(.trailing)
                     .accessibilityLabel("\(name) minutes")
-                Text("m").accessibilityHidden(true)
-                TextField("sec", value: $seconds[index], format: .number)
+                Text(AppStrings.localized("m")).accessibilityHidden(true)
+                TextField(AppStrings.localized("sec"), value: $seconds[index], format: .number)
                     .frame(width: 43)
                     .multilineTextAlignment(.trailing)
                     .accessibilityLabel("\(name) seconds")
-                Text("s").accessibilityHidden(true)
+                Text(AppStrings.localized("s")).accessibilityHidden(true)
             }
             .font(.system(size: 12, design: .monospaced))
             Text(presetRolesDraft[index].pomodoroDescription)
@@ -2278,7 +2316,7 @@ private struct SettingsView: View {
             }
             if rowActions.showsImmediateAction, let immediate {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("CURRENT SESSION")
+                    Text(AppStrings.localized("CURRENT SESSION"))
                         .font(.system(size: 9, weight: .bold, design: .rounded))
                         .tracking(0.8)
                         .foregroundStyle(colors.secondary)
@@ -2290,7 +2328,7 @@ private struct SettingsView: View {
                 }
             }
             HStack(spacing: 12) {
-                Button("Save Preset") {
+                Button(AppStrings.localized("Save Preset")) {
                     if durationChanged {
                         _ = timer.editDuration(.preset(index), seconds: proposed, action: .useNextTime)
                         minutes[index] = proposed / 60
@@ -2302,13 +2340,13 @@ private struct SettingsView: View {
                     presetRolesDraft = timer.presetRoles
                 }
                 .disabled(!rowActions.isSaveEnabled || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Button("Use Next Time") {
+                Button(AppStrings.localized("Use Next Time")) {
                     commitDuration(.preset(index), proposed: proposed, action: .useNextTime,
                                    minutes: $minutes[index], seconds: $seconds[index])
                 }
                 .disabled(!rowActions.isUseNextTimeEnabled)
                 Spacer(minLength: 0)
-                Button("Reset") {
+                Button(AppStrings.localized("Reset")) {
                     timer.resetPreset(index)
                     minutes[index] = timer.presetSeconds[index] / 60
                     seconds[index] = timer.presetSeconds[index] % 60
@@ -2326,19 +2364,27 @@ private struct SettingsView: View {
     private var soundSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("SOUND & ALERTS")
-            Toggle("Mute sound", isOn: $timer.muted).toggleStyle(.switch)
+            Toggle(AppStrings.localized("Mute sound"), isOn: $timer.muted).toggleStyle(.switch)
             HStack {
-                Text("In-app volume")
+                Text(AppStrings.localized("In-app volume"))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                 Slider(value: $timer.volume, in: 0...1)
                     .disabled(timer.muted)
-                    .accessibilityLabel("In-app sound volume")
+                    .accessibilityLabel(AppStrings.localized("In-app sound volume"))
                     .accessibilityValue("\(Int(timer.volume * 100)) percent")
                 Text("\(Int(timer.volume * 100))%")
                     .frame(width: 40, alignment: .trailing)
                     .accessibilityHidden(true)
             }
             .foregroundStyle(colors.secondary)
+            HStack {
+                Button(AppStrings.localized("sound.preview.preset")) { timer.previewPresetSound() }
+                    .disabled(timer.muted)
+                Button(AppStrings.localized("sound.preview.completion")) { timer.previewCompletionSound() }
+                    .disabled(timer.muted)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint(AppStrings.localized("sound.preview.hint"))
             helper("Mute silences the alarm and cube face thud. This slider adjusts sounds played by the app. macOS controls notification sound when the app is hidden or closed. A visual alert always appears.")
         }
     }
@@ -2346,20 +2392,21 @@ private struct SettingsView: View {
     private var windowSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("WINDOW")
-            Toggle("Borderless Window", isOn: Binding(
+            Button(AppStrings.localized("settings.openWelcomeGuide")) { showingWelcomeGuide = true }
+            Toggle(AppStrings.localized("Borderless Window"), isOn: Binding(
                 get: { timer.borderlessWindow },
                 set: { timer.setBorderlessWindow($0) }
             ))
                 .toggleStyle(.switch)
                 .disabled(timer.isDisplayFullscreen || timer.isPreparingDisplayFullscreen)
-            Toggle("Always on Top", isOn: $timer.alwaysOnTop)
+            Toggle(AppStrings.localized("Always on Top"), isOn: $timer.alwaysOnTop)
                 .toggleStyle(.switch)
-            Toggle("Show Timer in Menu Bar", isOn: Binding(
+            Toggle(AppStrings.localized("Show Timer in Menu Bar"), isOn: Binding(
                 get: { timer.showMenuBarTimer },
                 set: { timer.setShowMenuBarTimer($0) }
             ))
                 .toggleStyle(.switch)
-                .accessibilityHint("Shows the timer and quick controls in the menu bar. Hiding it does not stop the timer.")
+                .accessibilityHint(AppStrings.localized("Shows the timer and quick controls in the menu bar. Hiding it does not stop the timer."))
             helper("The menu bar timer shows the current time and state, lets you pause or resume, and starts saved presets. Remove it here or from the menu bar at any time.")
             helper("Standard window: drag an edge or corner to resize. Borderless window: Control-drag the cube to move it; hold Control and drag the lower-right grip to resize. Control-click or right-click the cube for its menu. The time stays visible when its face turns away.")
         }
@@ -2389,16 +2436,16 @@ private struct SettingsView: View {
                 Text(name)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                 Spacer(minLength: 8)
-                TextField("min", value: minutes, format: .number)
+                TextField(AppStrings.localized("min"), value: minutes, format: .number)
                     .frame(width: 43)
                     .multilineTextAlignment(.trailing)
                     .accessibilityLabel("\(name) minutes")
-                Text("m").accessibilityHidden(true)
-                TextField("sec", value: seconds, format: .number)
+                Text(AppStrings.localized("m")).accessibilityHidden(true)
+                TextField(AppStrings.localized("sec"), value: seconds, format: .number)
                     .frame(width: 43)
                     .multilineTextAlignment(.trailing)
                     .accessibilityLabel("\(name) seconds")
-                Text("s").accessibilityHidden(true)
+                Text(AppStrings.localized("s")).accessibilityHidden(true)
             }
             .font(.system(size: 12, design: .monospaced))
             if changed {
@@ -2415,12 +2462,12 @@ private struct SettingsView: View {
                             ? "Preserves elapsed time and the current running or paused state"
                             : "Starts this phase at its full new duration without changing its running or paused state")
                     }
-                    Button("Use Next Time") {
+                    Button(AppStrings.localized("Use Next Time")) {
                         commitDuration(setting, proposed: proposed, action: .useNextTime,
                                        minutes: minutes, seconds: seconds)
                     }
                     .accessibilityLabel("Use \(name) duration next time")
-                    .accessibilityHint("Saves the duration without changing the current running or paused timer")
+                    .accessibilityHint(AppStrings.localized("Saves the duration without changing the current running or paused timer"))
                 }
                 .font(.system(size: 11, weight: .semibold))
             }
@@ -2459,7 +2506,7 @@ private struct SettingsView: View {
                 .frame(maxWidth: .infinity)
                 .background(colors.panel, in: RoundedRectangle(cornerRadius: 12))
                 .allowsHitTesting(false)
-                .accessibilityLabel("Live cube appearance preview")
+                .accessibilityLabel(AppStrings.localized("Live cube appearance preview"))
             sectionTitle("COORDINATED STYLES")
             HStack(spacing: 8) {
                 ForEach([CubeTheme.dark, .light, .midnight]) { theme in
@@ -2483,7 +2530,7 @@ private struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityValue(appearance.value.theme == theme ? "Selected" : "Not selected")
-                    .accessibilityHint("Applies this coordinated cube appearance")
+                    .accessibilityHint(AppStrings.localized("Applies this coordinated cube appearance"))
                 }
             }
             if appearance.value.theme == .custom {
@@ -2502,15 +2549,15 @@ private struct SettingsView: View {
             .pickerStyle(.segmented)
             Divider().padding(.vertical, 1)
             sectionTitle("COLORS")
-            ColorPicker("Cube body", selection: colorBinding(\.body, setter: appearance.setBody))
-            ColorPicker("Progress accent", selection: colorBinding(\.accent, setter: appearance.setAccent))
-            ColorPicker("Display digits", selection: colorBinding(\.display, setter: appearance.setDisplay))
-            Toggle("Automatic readable digits", isOn: Binding(
+            ColorPicker(AppStrings.localized("Cube body"), selection: colorBinding(\.body, setter: appearance.setBody))
+            ColorPicker(AppStrings.localized("Progress accent"), selection: colorBinding(\.accent, setter: appearance.setAccent))
+            ColorPicker(AppStrings.localized("Display digits"), selection: colorBinding(\.display, setter: appearance.setDisplay))
+            Toggle(AppStrings.localized("Automatic readable digits"), isOn: Binding(
                 get: { appearance.automaticReadableDigits },
                 set: { appearance.setAutomaticReadableDigits($0) }
             ))
                 .toggleStyle(.switch)
-                .accessibilityHint("Brightens low-contrast digits on the cube without changing the saved color")
+                .accessibilityHint(AppStrings.localized("Brightens low-contrast digits on the cube without changing the saved color"))
             helper("Auto brightens only the rendered digits. Your chosen color stays saved.")
             if DisplayContrast.ratio(appearance.value.display) <
                 DisplayContrast.minimumDigitRatio {
@@ -2528,13 +2575,13 @@ private struct SettingsView: View {
             Divider().padding(.vertical, 1)
             sectionTitle("LIGHTING & SHADOW")
             HStack {
-                Text("Intensity")
+                Text(AppStrings.localized("Intensity"))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                 Slider(value: Binding(
                     get: { appearance.value.lighting },
                     set: { appearance.setLighting($0) }
                 ), in: 0...1)
-                .accessibilityLabel("Lighting and shadow intensity")
+                .accessibilityLabel(AppStrings.localized("Lighting and shadow intensity"))
                 .accessibilityValue("\(Int(appearance.value.lighting * 100)) percent")
                 Text("\(Int(appearance.value.lighting * 100))%")
                     .frame(width: 40, alignment: .trailing)
@@ -2543,12 +2590,12 @@ private struct SettingsView: View {
             .foregroundStyle(colors.secondary)
             Divider().padding(.vertical, 1)
             sectionTitle("DESK CLOCK")
-            Toggle("Use 24-hour time", isOn: Binding(
+            Toggle(AppStrings.localized("Use 24-hour time"), isOn: Binding(
                 get: { timer.use24HourTime },
                 set: { timer.setUse24HourTime($0) }
             ))
                 .toggleStyle(.switch)
-                .accessibilityHint("Shows Desk Clock in a locale-aware 24-hour format")
+                .accessibilityHint(AppStrings.localized("Shows Desk Clock in a locale-aware 24-hour format"))
             helper("When off, Desk Clock follows your Mac’s time format preference. This affects Desk Clock only.")
             Divider().padding(.vertical, 1)
         }
@@ -2561,7 +2608,7 @@ private struct SettingsView: View {
     }
 
     private func sectionTitle(_ title: String) -> some View {
-        Text(title)
+        Text(AppStrings.localized(title))
             .font(.system(size: 10, weight: .bold, design: .monospaced))
             .tracking(1.3)
             .foregroundStyle(accent)
@@ -2569,7 +2616,7 @@ private struct SettingsView: View {
     }
 
     private func helper(_ text: String) -> some View {
-        Text(text)
+        Text(AppStrings.localized(text))
             .font(.system(size: 11))
             .foregroundStyle(colors.secondary)
             .fixedSize(horizontal: false, vertical: true)

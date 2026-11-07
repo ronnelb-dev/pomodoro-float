@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "CubeTimer",
+    defaultLocalization: "en",
     platforms: [.macOS(.v14)],
     products: [.executable(name: "CubeTimer", targets: ["CubeTimer"])],
     targets: [

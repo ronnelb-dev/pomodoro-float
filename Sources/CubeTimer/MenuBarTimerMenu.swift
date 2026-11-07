@@ -1,12 +1,27 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+enum MenuBarQuickAction {
+    case countdown
+    case stopwatch
+
+    func perform(using timer: TimerModel, requestCountdownEntry: () -> Void) {
+        switch self {
+        case .countdown:
+            requestCountdownEntry()
+        case .stopwatch:
+            timer.startStopwatch()
+        }
+    }
+}
+
 enum MenuBarTimerIndicator {
     static func stateLabel(isRunning: Bool, isPaused: Bool, isComplete: Bool) -> String {
-        if isRunning { return "Running" }
-        if isPaused { return "Paused" }
-        if isComplete { return "Complete" }
-        return "Ready"
+        if isRunning { return AppStrings.localized("timer.state.running") }
+        if isPaused { return AppStrings.localized("timer.state.paused") }
+        if isComplete { return AppStrings.localized("timer.state.complete") }
+        return AppStrings.localized("timer.state.ready")
     }
 
     static func systemImage(isRunning: Bool, isPaused: Bool, isComplete: Bool) -> String {
@@ -18,16 +33,19 @@ enum MenuBarTimerIndicator {
 
     static func primaryActionTitle(isRunning: Bool, isPaused: Bool,
                                    nextPhaseName: String?) -> String {
-        if isRunning { return "Pause" }
-        if isPaused { return "Resume" }
-        if let nextPhaseName { return "Start \(nextPhaseName)" }
-        return "Start"
+        if isRunning { return AppStrings.localized("Pause") }
+        if isPaused { return AppStrings.localized("Resume") }
+        if let nextPhaseName {
+            return AppStrings.localizedFormat("menu.startPhase", nextPhaseName)
+        }
+        return AppStrings.localized("Start")
     }
 }
 
 struct MenuBarTimerMenu: View {
     @EnvironmentObject private var timer: TimerModel
     @Environment(\.openWindow) private var openWindow
+    @Binding var showingCustomCountdown: Bool
 
     private var stateLabel: String {
         MenuBarTimerIndicator.stateLabel(isRunning: timer.isRunning,
@@ -56,13 +74,13 @@ struct MenuBarTimerMenu: View {
         Button(primaryActionTitle) { timer.startOrPause() }
 
         if timer.hasSuspendedPomodoro {
-            Button("Resume Pomodoro") { timer.resumePomodoro() }
+            Button(AppStrings.localized("Resume Pomodoro")) { timer.resumePomodoro() }
         }
         if timer.canSkipBreak {
             Button(timer.skipBreakName) { timer.skipBreak() }
         }
 
-        Menu("Start Preset") {
+        Menu(AppStrings.localized("Start Preset")) {
             ForEach(timer.presetNames.indices, id: \.self) { index in
                 Button("Start \(timer.presetNames[index])") {
                     timer.selectAndStartPreset(index)
@@ -71,8 +89,19 @@ struct MenuBarTimerMenu: View {
         }
 
         Divider()
-        Button("Open Pomodoro Float") { openTimerWindow() }
-        Button("Pomodoro Float Help…") {
+        Button(AppStrings.localized("Countdown…")) {
+            MenuBarQuickAction.countdown.perform(using: timer) {
+                showingCustomCountdown = true
+                openTimerWindow()
+            }
+        }
+        Button(AppStrings.localized("Start Stopwatch")) {
+            MenuBarQuickAction.stopwatch.perform(using: timer) {}
+        }
+
+        Divider()
+        Button(AppStrings.localized("Open Pomodoro Float")) { openTimerWindow() }
+        Button(AppStrings.localized("Pomodoro Float Help…")) {
             openWindow(id: TimerApplicationDelegate.helpWindowSceneID)
         }
     }
@@ -87,10 +116,12 @@ struct MenuBarTimerMenu: View {
 
 struct TimerHelpCommands: Commands {
     @Environment(\.openWindow) private var openWindow
+    @Binding var showingWelcomeGuide: Bool
 
     var body: some Commands {
         CommandGroup(after: .help) {
-            Button("Pomodoro Float Help") {
+            Button(AppStrings.localized("Welcome Guide…")) { showingWelcomeGuide = true }
+            Button(AppStrings.localized("Pomodoro Float Help")) {
                 openWindow(id: TimerApplicationDelegate.helpWindowSceneID)
             }
         }

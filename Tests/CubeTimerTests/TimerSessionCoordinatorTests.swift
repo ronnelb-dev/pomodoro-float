@@ -1478,6 +1478,34 @@ final class TimerSessionCoordinatorTests: XCTestCase {
         model.reset()
     }
 
+    func testSoundPreviewsUseExistingClientsRespectMuteAndDoNotChangeSession() {
+        let (defaults, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let presetSound = RecordingPresetSound()
+        let completionSound = RecordingSound()
+        let model = TimerSessionCoordinator(defaults: defaults, notificationsEnabled: false,
+                               soundClient: completionSound, presetSoundClient: presetSound)
+        model.volume = 0.37
+        model.start()
+        let before = model.sessionSnapshot
+        let persistedBefore = defaults.data(forKey: SavedTimerSession.key)
+
+        model.previewPresetSound()
+        model.previewCompletionSound()
+        XCTAssertEqual(presetSound.volumes, [0.37])
+        XCTAssertEqual(completionSound.volumes, [0.37])
+        XCTAssertEqual(model.sessionSnapshot, before)
+        XCTAssertEqual(defaults.data(forKey: SavedTimerSession.key), persistedBefore)
+
+        model.muted = true
+        model.previewPresetSound()
+        model.previewCompletionSound()
+        XCTAssertEqual(presetSound.volumes, [0.37])
+        XCTAssertEqual(completionSound.volumes, [0.37])
+        XCTAssertEqual(model.sessionSnapshot, before)
+        model.reset()
+    }
+
     func testFocusAndShortBreakCompletionEachPlayOnceAtSelectedVolume() {
         let (defaults, suite) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }

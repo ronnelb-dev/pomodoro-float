@@ -20,9 +20,9 @@ enum SessionPhase: String, Codable {
     var isBreak: Bool { self != .focus }
     var displayName: String {
         switch self {
-        case .focus: "Focus"
-        case .breakTime: "Short Break"
-        case .longBreak: "Long Break"
+        case .focus: AppStrings.localized("phase.focus")
+        case .breakTime: AppStrings.localized("phase.shortBreak")
+        case .longBreak: AppStrings.localized("phase.longBreak")
         }
     }
     var displayLabel: String { displayName.uppercased() }
@@ -118,9 +118,9 @@ enum TimerDisplayStyle: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .cube: "Cube"
-        case .digital: "Digital"
-        case .clock: "Clock"
+        case .cube: AppStrings.localized("display.cube")
+        case .digital: AppStrings.localized("display.digital")
+        case .clock: AppStrings.localized("display.clock")
         }
     }
 
@@ -130,9 +130,9 @@ enum TimerDisplayStyle: String, CaseIterable, Identifiable {
 
     var fullscreenTitle: String {
         switch self {
-        case .cube: "Full Screen"
-        case .digital: "Full Screen Digital Timer"
-        case .clock: "Full Screen Clock"
+        case .cube: AppStrings.localized("fullscreen.cube")
+        case .digital: AppStrings.localized("fullscreen.digital")
+        case .clock: AppStrings.localized("fullscreen.clock")
         }
     }
 }
@@ -220,19 +220,9 @@ final class TimerModel: ObservableObject {
         return "Pomodoro will turn \(pendingFlowEnabled ? "on" : "off") when this timer finishes"
     }
     var accessibilityValue: String {
-        let state = isComplete ? "Complete" : isRunning ? "Running" : isPaused ? "Paused" : "Ready"
-        let session = sessionKind == .stopwatch
-            ? "Stopwatch, \(TimerEngine.spokenDuration(remaining.rounded(.down))) elapsed"
-            : sessionKind == .customCountdown
-            ? "Countdown"
-            : flowEnabled
-            ? "\(phase.displayName) session, \(phase == .longBreak ? TimerEngine.spokenDuration(total) : presetNames[selectedPreset])"
-            : "\(presetNames[selectedPreset])\(hasSuspendedPomodoro ? ", Pomodoro paused" : "")"
-        let count = pomodoroModeEnabled
-            ? ", \(focusesInCycle) of \(cycleTarget) focuses toward long break, \(completedFocusTotal) completed focuses total"
-            : ""
-        return sessionKind == .stopwatch ? "\(session), \(state)\(count)" :
-            "\(session), \(state), \(TimerEngine.spokenDuration(remaining)) remaining\(count)"
+        TimerAccessibilityValueFormatter.value(
+            snapshot: sessionSnapshot,
+            presetName: presetNames.indices.contains(selectedPreset) ? presetNames[selectedPreset] : "")
     }
 
     private let coordinator: TimerSessionCoordinator
@@ -318,6 +308,8 @@ final class TimerModel: ObservableObject {
     }
     func selectAndStartPreset(_ index: Int) { _ = send(.selectAndStartPreset(index)) }
     func selectAndStartCubeFace(_ index: Int) { _ = send(.selectAndStartCubeFace(index)) }
+    func previewPresetSound() { coordinator.previewPresetSound() }
+    func previewCompletionSound() { coordinator.previewCompletionSound() }
     func turn(_ direction: Int) { _ = send(.turn(direction)) }
     func setBorderlessWindow(_ enabled: Bool) {
         guard !isDisplayFullscreen, !isPreparingDisplayFullscreen else { return }

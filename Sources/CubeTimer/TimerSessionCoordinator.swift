@@ -1,8 +1,6 @@
 import AppKit
-import AVFoundation
 import Combine
 import Foundation
-import UserNotifications
 import Darwin
 
 enum PresetRole: String, CaseIterable, Codable {
@@ -12,17 +10,17 @@ enum PresetRole: String, CaseIterable, Codable {
 
     var title: String {
         switch self {
-        case .shortBreak: "Short Break"
-        case .focus: "Focus"
-        case .general: "General"
+        case .shortBreak: AppStrings.localized("role.shortBreak")
+        case .focus: AppStrings.localized("role.focus")
+        case .general: AppStrings.localized("role.general")
         }
     }
 
     var pomodoroDescription: String {
         switch self {
-        case .shortBreak: "Used for Pomodoro short breaks."
-        case .focus: "Used for Pomodoro focus phases."
-        case .general: "Starts as an independent timer outside Pomodoro phases."
+        case .shortBreak: AppStrings.localized("role.shortBreak.help")
+        case .focus: AppStrings.localized("role.focus.help")
+        case .general: AppStrings.localized("role.general.help")
         }
     }
 }
@@ -231,19 +229,9 @@ final class TimerSessionCoordinator: ObservableObject {
         return "Pomodoro will turn \(pendingFlowEnabled ? "on" : "off") when this timer finishes"
     }
     var accessibilityValue: String {
-        let state = isComplete ? "Complete" : isRunning ? "Running" : isPaused ? "Paused" : "Ready"
-        let session = sessionKind == .stopwatch
-            ? "Stopwatch, \(TimerEngine.spokenDuration(remaining.rounded(.down))) elapsed"
-            : sessionKind == .customCountdown
-            ? "Countdown"
-            : flowEnabled
-            ? "\(phase.displayName) session, \(phase == .longBreak ? TimerEngine.spokenDuration(total) : presetNames[selectedPreset])"
-            : "\(presetNames[selectedPreset])\(hasSuspendedPomodoro ? ", Pomodoro paused" : "")"
-        let count = pomodoroModeEnabled
-            ? ", \(focusesInCycle) of \(cycleTarget) focuses toward long break, \(completedFocusTotal) completed focuses total"
-            : ""
-        return sessionKind == .stopwatch ? "\(session), \(state)\(count)" :
-            "\(session), \(state), \(TimerEngine.spokenDuration(remaining)) remaining\(count)"
+        TimerAccessibilityValueFormatter.value(
+            snapshot: sessionSnapshot,
+            presetName: presetNames.indices.contains(selectedPreset) ? presetNames[selectedPreset] : "")
     }
     private let defaults: UserDefaults
     private let sessionPersistence: TimerSessionPersistence
@@ -486,6 +474,16 @@ final class TimerSessionCoordinator: ObservableObject {
         guard Self.defaultDurations.indices.contains(index) else { return }
         selectAndStartPreset(index)
         if !muted { presetSound.play(volume: volume) }
+    }
+
+    func previewPresetSound() {
+        guard !muted else { return }
+        presetSound.play(volume: volume)
+    }
+
+    func previewCompletionSound() {
+        guard !muted else { return }
+        sound.play(volume: volume)
     }
 
     @discardableResult
@@ -807,8 +805,9 @@ final class TimerSessionCoordinator: ObservableObject {
             break
         }
         saveSession()
-        showAlert("Pomodoro \(phase.displayName) restored")
-        announce("Pomodoro \(phase.displayName) restored. \(TimerEngine.spokenDuration(remaining)) remaining.")
+        showAlert(AppStrings.localizedFormat("alert.pomodoroRestored", phase.displayName))
+        announce(AppStrings.localizedFormat("announcement.pomodoroRestored", phase.displayName,
+                                            TimerEngine.spokenDuration(remaining)))
         return true
     }
 
@@ -875,15 +874,20 @@ final class TimerSessionCoordinator: ObservableObject {
         scheduleCurrentNotification()
         if wasPaused {
             announce(sessionKind == .stopwatch ? "Stopwatch resumed." :
-                     "Resumed. \(TimerEngine.spokenDuration(remaining)) remaining.")
+                     AppStrings.localizedFormat("announcement.resumed",
+                                                TimerEngine.spokenDuration(remaining)))
         } else if wasComplete && flowEnabled {
-            announce("\(phase.displayName) session started. \(TimerEngine.spokenDuration(remaining)) remaining.")
+            announce(AppStrings.localizedFormat("announcement.phaseStarted", phase.displayName,
+                                                TimerEngine.spokenDuration(remaining)))
         } else if sessionKind == .stopwatch {
             announce("Stopwatch started.")
         } else if sessionKind == .customCountdown {
-            announce("Countdown started. \(TimerEngine.spokenDuration(remaining)) remaining.")
+            announce(AppStrings.localizedFormat("announcement.countdownStarted",
+                                                TimerEngine.spokenDuration(remaining)))
         } else {
-            announce("\(presetNames[selectedPreset]) started. \(TimerEngine.spokenDuration(remaining)) remaining.")
+            announce(AppStrings.localizedFormat("announcement.presetStarted",
+                                                presetNames[selectedPreset],
+                                                TimerEngine.spokenDuration(remaining)))
         }
     }
 
@@ -904,9 +908,11 @@ final class TimerSessionCoordinator: ObservableObject {
         isPaused = true
         saveSession()
         notifications?.cancel()
-        announce(sessionKind == .stopwatch ?
-                 "Stopwatch paused at \(TimerEngine.stopwatchDisplay(remaining))." :
-                 "Paused. \(TimerEngine.spokenDuration(remaining)) remaining.")
+        announce(sessionKind == .stopwatch
+            ? AppStrings.localizedFormat("announcement.stopwatchPaused",
+                                         TimerEngine.stopwatchDisplay(remaining))
+            : AppStrings.localizedFormat("announcement.paused",
+                                         TimerEngine.spokenDuration(remaining)))
     }
 
     func reset() {
@@ -914,7 +920,8 @@ final class TimerSessionCoordinator: ObservableObject {
         stop()
         if let pendingFlowEnabled {
             applyModeChange(pendingFlowEnabled)
-            announce("Timer reset. \(pendingFlowEnabled ? "Pomodoro" : "Countdown") ready.")
+            announce(AppStrings.localizedFormat("announcement.resetReady",
+                AppStrings.localized(pendingFlowEnabled ? "Pomodoro" : "Countdown")))
             return
         }
         total = flowEnabled ? duration(for: phase) : sessionKind == .customCountdown ? total :
@@ -924,7 +931,8 @@ final class TimerSessionCoordinator: ObservableObject {
         clearAlert()
         saveSession()
         announce(sessionKind == .stopwatch ? "Stopwatch reset." :
-                 "Timer reset. \(TimerEngine.spokenDuration(remaining)) ready.")
+            AppStrings.localizedFormat("announcement.timerResetReady",
+                                       TimerEngine.spokenDuration(remaining)))
     }
 
     private var currentWallNow: Date { commandTime?.wall ?? timeSource.wallNow }
@@ -1020,11 +1028,13 @@ final class TimerSessionCoordinator: ObservableObject {
 
     private func announce(_ message: String) {
         guard appIsActive() else { return }
-        accessibilityAnnouncer.announce(message)
+        accessibilityAnnouncer.announce(AppStrings.localized(message))
     }
 
     private var notificationTitle: String {
-        flowEnabled ? "\(phase.displayName) session complete" : "Timer complete"
+        flowEnabled
+            ? AppStrings.localizedFormat("notification.phaseComplete", phase.displayName)
+            : AppStrings.localized("Timer complete")
     }
 
     private func complete(expiredDeadline: TimeInterval,
@@ -1041,11 +1051,13 @@ final class TimerSessionCoordinator: ObservableObject {
             isComplete = true
             remaining = 0
             applyModeChange(pendingFlowEnabled)
-            showAlert("\(completedPhase.displayName) complete · \(pendingFlowEnabled ? "Pomodoro" : "Countdown") ready")
+            showAlert(AppStrings.localizedFormat("alert.phaseCompleteReady", completedPhase.displayName,
+                AppStrings.localized(pendingFlowEnabled ? "Pomodoro" : "Countdown")))
             if !afterWake && now.continuous - expiredDeadline <= 2 {
                 playCompletionSound()
             }
-            announce("Timer complete. \(pendingFlowEnabled ? "Pomodoro" : "Countdown") ready. Press Start.")
+            announce(AppStrings.localizedFormat("announcement.timerCompleteReady",
+                AppStrings.localized(pendingFlowEnabled ? "Pomodoro" : "Countdown")))
             return
         }
         if flowEnabled {
@@ -1065,9 +1077,11 @@ final class TimerSessionCoordinator: ObservableObject {
                 isRunning = true
                 isPaused = false
                 isComplete = false
-                showAlert("\(completedPhase.displayName) complete")
+                showAlert(AppStrings.localizedFormat("alert.phaseComplete", completedPhase.displayName))
                 playCompletionSound()
-                announce("\(completedPhase.displayName) complete. \(phase.displayName) running. \(TimerEngine.spokenDuration(remaining)) remaining.")
+                announce(AppStrings.localizedFormat("announcement.phaseCompleteRunning",
+                    completedPhase.displayName, phase.displayName,
+                    TimerEngine.spokenDuration(remaining)))
                 saveSession()
                 scheduleCurrentNotification(at: now.continuous)
             } else {
@@ -1078,11 +1092,12 @@ final class TimerSessionCoordinator: ObservableObject {
                 isComplete = true
                 remaining = 0
                 notifications?.cancel()
-                showAlert(missed
-                    ? "\(completedPhase.displayName) elapsed while away · Start \(nextPhase.displayName)"
-                    : "\(completedPhase.displayName) complete · Start \(nextPhase.displayName)")
+                showAlert(AppStrings.localizedFormat(
+                    missed ? "alert.phaseElapsedWhileAway" : "alert.phaseCompleteNext",
+                    completedPhase.displayName, nextPhase.displayName))
                 if !missed { playCompletionSound() }
-                announce("\(completedPhase.displayName) complete. Start \(nextPhase.displayName) when ready.")
+                announce(AppStrings.localizedFormat("announcement.nextPhaseReady",
+                    completedPhase.displayName, nextPhase.displayName))
                 saveSession()
             }
         } else {
@@ -1213,7 +1228,8 @@ final class TimerSessionCoordinator: ObservableObject {
             isPaused = true
             saveSession()
             showAlert("Paused timer restored")
-            announce("Paused timer restored. \(TimerEngine.spokenDuration(remaining)) remaining.")
+            announce(AppStrings.localizedFormat("announcement.timerRestoredRemaining",
+                TimerEngine.spokenDuration(remaining)))
         case .running:
             guard let originalDeadline = undo.session.deadline else { return false }
             let originalContinuous = undo.session.continuousDeadline ??
@@ -1230,7 +1246,8 @@ final class TimerSessionCoordinator: ObservableObject {
                 scheduleCurrentNotification(at: current.continuous)
                 showAlert("Timer restored")
                 announce(sessionKind == .stopwatch ? "Stopwatch restored." :
-                         "Timer restored. \(TimerEngine.spokenDuration(remaining)) remaining.")
+                         AppStrings.localizedFormat("announcement.timerRestoredRemaining",
+                            TimerEngine.spokenDuration(remaining)))
             } else if sessionKind == .stopwatch {
                 remaining = total
                 isComplete = true
@@ -1238,15 +1255,18 @@ final class TimerSessionCoordinator: ObservableObject {
                 showAlert("Stopwatch restored · Stopped at 99:59")
             } else if let pendingFlowEnabled {
                 applyModeChange(pendingFlowEnabled)
-                showAlert("Timer restored · \(pendingFlowEnabled ? "Pomodoro" : "Countdown") ready")
+                showAlert(AppStrings.localizedFormat("alert.timerRestoredReady",
+                    AppStrings.localized(pendingFlowEnabled ? "Pomodoro" : "Countdown")))
             } else if flowEnabled {
                 remaining = 0
                 isComplete = true
                 recordFocusCompletionIfNeeded()
                 if phase == .longBreak { finishLongBreakCycle() }
                 saveSession()
-                showAlert("Timer restored · \(phase.displayName) complete")
-                announce("Timer restored. \(phase.displayName) complete. Start the next phase when ready.")
+                showAlert(AppStrings.localizedFormat("alert.timerRestoredPhaseComplete",
+                    phase.displayName))
+                announce(AppStrings.localizedFormat("announcement.restoredPhaseComplete",
+                    phase.displayName))
             } else {
                 remaining = 0
                 isComplete = true
@@ -1342,7 +1362,8 @@ final class TimerSessionCoordinator: ObservableObject {
                 if phase == .longBreak { finishLongBreakCycle() }
                 if let pendingFlowEnabled {
                     applyModeChange(pendingFlowEnabled)
-                    showAlert("Timer complete · \(pendingFlowEnabled ? "Pomodoro" : "Countdown") ready")
+                    showAlert(AppStrings.localizedFormat("alert.timerCompleteReady",
+                        AppStrings.localized(pendingFlowEnabled ? "Pomodoro" : "Countdown")))
                 } else {
                     saveSession()
                     showAlert(sessionKind == .stopwatch ? "Stopwatch stopped at 99:59" :
@@ -1380,7 +1401,7 @@ final class TimerSessionCoordinator: ObservableObject {
 
     private func showAlert(_ text: String) {
         alertClearTask?.cancel()
-        alertText = text
+        alertText = AppStrings.localized(text)
         alertClearTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 8_000_000_000)
             guard !Task.isCancelled else { return }
@@ -1391,118 +1412,5 @@ final class TimerSessionCoordinator: ObservableObject {
     private func clearAlert() {
         alertClearTask?.cancel()
         alertText = nil
-    }
-}
-
-private final class CompletionNotifications: NSObject, UNUserNotificationCenterDelegate,
-                                             CompletionNotificationClient {
-    static let shared = CompletionNotifications()
-    private let center = UNUserNotificationCenter.current()
-    private let identifier = "cube-timer-completion"
-
-    override init() {
-        super.init()
-        center.delegate = self
-    }
-
-    func requestPermission() {
-        center.requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
-    }
-
-    func schedule(after seconds: TimeInterval, title: String, playSound: Bool) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = "Pomodoro Float is ready for the next step."
-        // Foreground delivery omits .sound in willPresent; the app plays its
-        // volume-adjusted copy. Background delivery uses the bundled CAF.
-        content.sound = playSound
-            ? UNNotificationSound(named: UNNotificationSoundName(rawValue: CompletionAudio.notificationFile))
-            : nil
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, seconds), repeats: false)
-        center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
-    }
-
-    func cancel() {
-        center.removePendingNotificationRequests(withIdentifiers: [identifier])
-    }
-
-    func canDeliverSound() async -> Bool {
-        await withCheckedContinuation { continuation in
-            center.getNotificationSettings { settings in
-                let permitted = settings.authorizationStatus == .authorized ||
-                    settings.authorizationStatus == .provisional
-                continuation.resume(returning: permitted && settings.soundSetting == .enabled)
-            }
-        }
-    }
-
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
-        completionHandler([.banner, .list])
-    }
-}
-
-
-private final class PresetSound: PresetSoundClient {
-    private var player: AVAudioPlayer?
-
-    func play(volume: Double) {
-        if player == nil {
-            guard let url = PresetAudio.playbackURL() else {
-                NSLog("Pomodoro Float preset audio is missing from the app bundle")
-                return
-            }
-            do {
-                player = try AVAudioPlayer(contentsOf: url)
-                player?.numberOfLoops = 0
-                player?.prepareToPlay()
-            } catch {
-                NSLog("Pomodoro Float could not load its preset audio: %@", String(describing: error))
-                return
-            }
-        }
-        guard let player else { return }
-        player.stop()
-        player.currentTime = 0
-        player.volume = Float(max(0, min(1, volume)))
-        if !player.play() {
-            NSLog("Pomodoro Float could not start its preset audio")
-        }
-    }
-}
-
-private final class CompletionSound: CompletionSoundClient {
-    private var player: AVAudioPlayer?
-
-    func play(volume: Double) {
-        guard let url = CompletionAudio.playbackURL() else {
-            NSLog("Pomodoro Float completion audio is missing from the app bundle")
-            return
-        }
-        do {
-            let player = try AVAudioPlayer(contentsOf: url)
-            player.volume = Float(max(0, min(1, volume)))
-            player.numberOfLoops = 0
-            player.prepareToPlay()
-            self.player = player
-            if !player.play() {
-                NSLog("Pomodoro Float could not start its completion audio")
-            }
-        } catch {
-            NSLog("Pomodoro Float could not play its completion audio: %@", String(describing: error))
-        }
-    }
-}
-
-@MainActor
-private final class SystemTimerAccessibilityAnnouncer: TimerAccessibilityAnnouncementClient {
-    func announce(_ message: String) {
-        guard let app = NSApp else { return }
-        NSAccessibility.post(element: app, notification: .announcementRequested,
-                             userInfo: [.announcement: message,
-                                        .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 }

@@ -140,7 +140,7 @@ struct DeskClockPanel: View {
                         }
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Desk clock")
+                .accessibilityLabel(AppStrings.localized("Desk clock"))
                 .accessibilityValue("\(presentation.time), \(presentation.dateLine)")
             }
         }
